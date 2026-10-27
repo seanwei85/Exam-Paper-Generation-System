@@ -1,0 +1,2544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>机房运维试卷系统</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --line:#e5e7eb; --line-2:#d7dbe0;
+  --text:#1f2937; --text-2:#6b7280; --text-3:#9ca3af;
+  --primary:#2563eb; --primary-bg:#eff4ff; --danger:#dc2626; --ok:#15803d;
+  --radius:8px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font:14px/1.55 system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:var(--text);background:var(--bg)}
+button{font:inherit;cursor:pointer;border:1px solid var(--line-2);background:#fff;color:var(--text);border-radius:6px;padding:6px 12px}
+button:hover{border-color:#b9bfc7;background:#fafbfc}
+button.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+button.primary:hover{background:#1d4fd8;border-color:#1d4fd8}
+button.ghost{border-color:transparent;background:transparent;color:var(--text-2)}
+button.ghost:hover{background:#eef1f5;color:var(--text)}
+button.danger{color:var(--danger);border-color:#f0c2c2}
+/* 代码已更新但进程还是旧的：这种状态下界面是新的、后端是旧的，点新按钮会报 not found，
+   光看界面完全看不出原因，所以要在最显眼的地方说清楚「怎么重启」。 */
+.stale-bar{position:fixed;left:0;right:0;top:0;z-index:300;display:flex;align-items:center;gap:10px;
+  padding:9px 16px;background:#fff8e6;border-bottom:1px solid #f0d9a8;color:#7a4d00;
+  font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.stale-bar[hidden]{display:none}
+.stale-bar b{color:#663f00}
+.stale-bar .close{margin-left:auto;border-color:#e6c98c;background:#fffdf6;color:#7a4d00}
+.stale-bar code{background:#fff;border:1px solid #f0d9a8;border-radius:4px;padding:1px 5px;font-size:12px}
+body.has-stale{padding-top:46px}
+button.danger:hover{background:#fdf3f3}
+button:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{font:inherit;color:var(--text);border:1px solid var(--line-2);border-radius:6px;padding:7px 10px;background:#fff;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+textarea{resize:vertical;min-height:80px;line-height:1.7}
+a{color:var(--primary);text-decoration:none}
+
+.layout{display:flex;min-height:100vh}
+.side{width:208px;flex:0 0 208px;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{padding:18px 18px 14px;border-bottom:1px solid var(--line)}
+.brand b{display:block;font-size:15px;letter-spacing:.3px}
+.brand span{font-size:12px;color:var(--text-3)}
+.nav{padding:10px 10px;flex:1;overflow:auto}
+.nav a{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:6px;color:var(--text-2);font-size:13.5px;margin-bottom:2px}
+.nav a:hover{background:#f3f5f8;color:var(--text)}
+.nav a.on{background:var(--primary-bg);color:var(--primary);font-weight:500}
+.nav .dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.45}
+.side-foot{padding:10px 14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--text-3);line-height:1.7}
+.side-foot code{display:block;font-size:10.5px;background:#f3f5f8;padding:2px 5px;border-radius:3px;color:var(--text-2);word-break:break-all;overflow-wrap:anywhere;line-height:1.5;max-height:44px;overflow:hidden}
+
+.main{flex:1;min-width:0;padding:22px 28px 40px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px}
+.page-head h1{font-size:18px;font-weight:600;margin:0}
+.page-head p{margin:4px 0 0;font-size:12.5px;color:var(--text-3)}
+.actions{display:flex;gap:8px;align-items:center}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.card-h{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}
+.card-h b{font-size:13.5px;font-weight:600}
+.card-b{padding:16px}
+
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.metric .k{font-size:12px;color:var(--text-3)}
+.metric .v{font-size:24px;font-weight:600;margin-top:2px;letter-spacing:.5px}
+.metric .s{font-size:11.5px;color:var(--text-3);margin-top:2px}
+
+.grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:12.5px}
+.bar-row .n{width:54px;color:var(--text-2);flex:0 0 54px}
+.bar-row .t{flex:1;height:8px;background:#f0f2f5;border-radius:4px;overflow:hidden}
+.bar-row .t i{display:block;height:100%;background:#93b4f5;border-radius:4px}
+.bar-row .c{width:46px;text-align:right;color:var(--text-3);font-variant-numeric:tabular-nums}
+
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.filters select,.filters input{width:auto;min-width:120px;padding:6px 9px;font-size:13px}
+.filters .grow{flex:1;min-width:180px}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:500;color:var(--text-3);font-size:12px;padding:9px 10px;border-bottom:1px solid var(--line);background:#fbfcfd;white-space:nowrap}
+td{padding:10px;border-bottom:1px solid #f0f1f3;vertical-align:top}
+tr:hover td{background:#fafbfd}
+td.stem{max-width:520px}
+td.stem .txt{color:var(--text);line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+td.stem .meta{font-size:11.5px;color:var(--text-3);margin-top:3px}
+td.stem .opt-line{font-size:12px;color:var(--text-2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;background:#f0f2f5;color:var(--text-2);margin-right:4px}
+.tag.t-single,.tag.t-multi,.tag.t-judge{background:#eef4ff;color:#2554b0}
+.tag.t-fill{background:#eefaf2;color:#146c43}
+.tag.t-qa{background:#fdf3e7;color:#9a5b12}
+.d-easy{color:#15803d}.d-mid{color:#b45309}.d-hard{color:#b91c1c}
+.num{font-variant-numeric:tabular-nums;color:var(--text-2)}
+.pager{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--text-2)}
+.pager .btns{display:flex;gap:6px;align-items:center}
+.pager button{padding:4px 10px;font-size:12.5px}
+
+.form{display:grid;grid-template-columns:repeat(12,1fr);gap:14px 16px}
+.f{grid-column:span 12}
+.f.c3{grid-column:span 3}.f.c4{grid-column:span 4}.f.c6{grid-column:span 6}
+.f label{display:block;font-size:12.5px;color:var(--text-2);margin-bottom:5px}
+.f label em{color:var(--danger);font-style:normal;margin-left:2px}
+.hint{font-size:11.5px;color:var(--text-3);margin-top:4px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{padding:6px 14px;font-size:13px;background:#fff}
+.seg button.on{background:var(--primary-bg);border-color:#b9cdf7;color:var(--primary);font-weight:500}
+.opt-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.opt-row .key{width:26px;flex:0 0 26px;text-align:center;font-weight:600;color:var(--text-2)}
+.opt-row .drag{flex:0 0 12px;cursor:grab;color:#c3c8d2;font-size:13px;line-height:1;letter-spacing:-2px;user-select:none}
+.opt-row input[type=text]{flex:1}
+.scorebox{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text-2);display:flex;gap:18px;flex-wrap:wrap}
+.scorebox b{color:var(--text);font-variant-numeric:tabular-nums}
+.empty{padding:40px 16px;text-align:center;color:var(--text-3);font-size:13px}
+.toast{position:fixed;right:20px;bottom:24px;background:#111827;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;transform:translateY(8px);transition:.18s;z-index:99;max-width:420px}
+.toast.on{opacity:1;transform:none}
+.toast.err{background:#991b1b}
+.section-title{font-size:13.5px;font-weight:600;margin:4px 0 10px;padding-left:9px;border-left:3px solid var(--primary)}
+.split{height:1px;background:var(--line);margin:6px 0 16px}
+.notice{background:#fff8e6;border:1px solid #f3e0b0;color:#7a5b12;border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.7}
+.placeholder{padding:60px 20px;text-align:center;color:var(--text-3)}
+.placeholder b{display:block;font-size:15px;color:var(--text-2);margin-bottom:6px}
+/* ---------------- 组卷 */
+.paper-layout{display:grid;grid-template-columns:minmax(0,1fr) 376px;gap:14px;align-items:start}
+.paper-side{position:sticky;top:16px;display:flex;flex-direction:column;gap:12px}
+.modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.mode{border:1px solid var(--line);border-radius:9px;padding:12px 14px;cursor:pointer;background:#fff}
+.mode:hover{border-color:#c9d3e0;background:#fbfcfe}
+.mode.on{border-color:var(--primary);background:var(--primary-bg);box-shadow:0 0 0 3px rgba(37,99,235,.09)}
+.mode b{display:block;font-size:13.5px;margin-bottom:3px}
+.mode.on b{color:var(--primary)}
+.mode span{font-size:11.8px;color:var(--text-2);line-height:1.5;display:block}
+.qrow{display:grid;grid-template-columns:1.3fr 46px 70px 78px 62px 66px;gap:8px;align-items:center;font-size:13px;padding:6px 0;border-bottom:1px solid #f2f3f5}
+.qrow.hd{font-size:11.8px;color:var(--text-3);border-bottom:1px solid var(--line);padding-bottom:6px}
+.qrow input[type=number]{padding:4px 7px;font-size:12.5px;text-align:right}
+.qrow input[type=checkbox]{width:15px;height:15px}
+.qrow .sub{text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2)}
+.qrow .av{text-align:right;font-size:12px;color:var(--text-3);font-variant-numeric:tabular-nums}
+.pre-item{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:5px 0;border-bottom:1px dashed #eef0f3}
+.pre-item:last-child{border:0}
+.pre-item b{font-variant-numeric:tabular-nums}
+.bad{color:var(--danger)}
+.good{color:var(--ok)}
+.rule{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f2f3f5;font-size:13px}
+.rule:last-child{border:0}
+.rule .t{flex:1;min-width:0}
+.rule .t span{display:block;font-size:11.8px;color:var(--text-3);margin-top:1px}
+.rule input[type=number],.rule input[type=text]{width:92px;padding:4px 8px;font-size:12.5px}
+.rule input[type=checkbox]{width:16px;height:16px;flex:0 0 16px}
+.quota-row{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px}
+.quota-row .n{width:64px;color:var(--text-2)}
+.quota-row input{width:92px;padding:4px 8px;font-size:12.5px;text-align:right}
+.quota-row .r{font-size:12px;color:var(--text-3)}
+.dev-table{width:100%;border-collapse:collapse;font-size:12.8px}
+.dev-table th,.dev-table td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}
+.dev-table th{font-weight:600;color:var(--text-2);font-size:12px}
+.dev-table td.num{text-align:right;width:86px;font-variant-numeric:tabular-nums}
+.dev-table tr.off{background:#fef3c7}
+.dev-table td.bad{color:#b45309;font-weight:600}
+/* ---------------- A4 卷面 */
+.a4{width:210mm;min-height:297mm;padding:16mm 15mm 16mm;background:#fff;margin:0 auto;color:#000;
+  font-family:"SimSun","Songti SC",serif;font-size:10.5pt;line-height:1.85;
+  box-shadow:0 2px 10px rgba(15,23,42,.12);border:1px solid #e7e9ee}
+.a4 .exam-head{text-align:center}
+.a4 .exam-head .unit{font-size:11pt;letter-spacing:3px}
+.a4 .exam-head h2{font-size:15pt;margin:7px 0 5px;font-weight:700;letter-spacing:1px}
+.a4 .exam-meta{display:flex;justify-content:space-between;font-size:8.8pt;border-top:1px solid #000;border-bottom:1px solid #000;padding:3px 2px;margin-top:5px}
+.a4 .cand{display:flex;gap:18px;font-size:9.5pt;margin:8px 0 2px;flex-wrap:wrap}
+.a4 .cand u{display:inline-block;min-width:84px;border-bottom:1px solid #000;text-decoration:none}
+.a4 .seal{text-align:center;font-size:8.2pt;color:#333;border-top:1px dashed #666;margin:7px 0 12px;padding-top:3px;letter-spacing:5px}
+.a4 .sec{margin:13px 0 6px;font-size:10.5pt;font-weight:700}
+.a4 .q{break-inside:avoid;page-break-inside:avoid;margin:0 0 8px}
+.a4 .q .stem{white-space:pre-wrap}
+.a4 .q .no{font-weight:700;margin-right:3px}
+.a4 .q .pts{font-size:8.8pt;color:#333;margin-left:4px}
+.a4 .opts{display:flex;flex-wrap:wrap;gap:1px 12px;margin:1px 0 0 17px}
+.a4 .opts span{min-width:44%}
+.a4 .ans-line{height:20px;border-bottom:1px solid #bbb;margin:5px 0 0 17px}
+.a4 .blank-space{height:52px}
+.a4 .foot{text-align:center;font-size:8.4pt;color:#444;margin-top:14px;border-top:1px solid #ccc;padding-top:4px}
+.answer-item{padding:6px 0;border-bottom:1px dotted #d8dbe1;break-inside:avoid}
+.answer-item .n{font-weight:700;margin-right:6px}
+.answer-item .a{color:#0b6b3a}
+.answer-item .an{font-size:9pt;color:#555;margin-top:2px;white-space:pre-wrap}
+.score-in{width:42px;padding:0 3px;font-size:8.8pt;text-align:center;border:1px solid #d5d9df;border-radius:3px;background:#fff;color:#000}
+.tabs{display:flex;gap:6px}
+.hide{display:none!important}
+.paper-frame{background:#eceef2;padding:18px;border-radius:10px;overflow:auto}
+.drop{border:1.5px dashed var(--line-2);border-radius:10px;padding:30px 20px;text-align:center;color:var(--text-2);background:#fbfcfd;cursor:pointer;transition:.12s}
+.drop:hover,.drop.on{border-color:var(--primary);background:var(--primary-bg)}
+.drop b{display:block;font-size:14px;color:var(--text);margin-bottom:5px}
+.drop span{font-size:12.3px;color:var(--text-3)}
+.imp-table table{table-layout:fixed;min-width:1180px}
+.imp-table th,.imp-table td{padding:7px 8px}
+.imp-table .c-chk{width:38px}
+.imp-table .c-type{width:104px}
+.imp-table .c-diff{width:74px}
+.imp-table .c-cat{width:96px}
+.imp-table .c-sub{width:122px}
+.imp-table .c-ans{width:120px}
+.imp-table .c-opt{width:52px}
+.imp-table .c-del{width:44px;text-align:center}
+.imp-table select,.imp-table input{width:100%;padding:4px 6px;font-size:12.5px}
+.imp-table .stem-in{font-size:12.8px}
+/* 缺项标黄：缺答案标答案框、缺题干标题干框；用左侧色条让整行也能一眼看到 */
+.imp-table tr.warn-ans .c-ans input,
+.imp-table tr.warn-stem .stem-in{border-color:#e0a0a0;background:#fff7f7}
+.imp-table tr.warn-ans td:first-child,
+.imp-table tr.warn-stem td:first-child{box-shadow:inset 3px 0 0 #e59a9a}
+.imp-table .stem-cell{display:flex;gap:6px;align-items:center}
+.imp-table tr.dup-row td{background:#fbfaf4}
+.imp-table .dup-tag{flex:0 0 auto;font-size:11px;line-height:1.6;padding:0 5px;border-radius:3px;
+  background:#fdf1d8;color:#8a5a00;border:1px solid #efd8a6;white-space:nowrap;cursor:help}
+.dup-note{font-weight:400;font-size:12.5px;color:#8a5a00;margin-left:12px}
+.miss-ans{color:#b42318}
+/* ---------------- AI 审校 */
+.ai-box{border:1px solid #dbe6f3;background:#f7fafd;border-radius:9px;padding:10px 12px}
+.ai-box .ai-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ai-box .ai-head b{font-size:13px}
+.ai-box .ai-head .hint{margin:0;flex:1;min-width:180px}
+.ai-tag{display:inline-block;font-size:11px;line-height:1.7;padding:0 5px;border-radius:3px;
+  border:1px solid transparent;cursor:pointer;white-space:nowrap}
+.ai-ok{background:#eaf7ee;color:#1a6b3a;border-color:#bde3c8}
+.ai-wrong{background:#fdeeee;color:#a32d2d;border-color:#f2c2c2}
+.ai-unsure{background:#fdf4e3;color:#8a5a00;border-color:#efd8a6}
+.ai-filled{background:#eef4fd;color:#1c4e8a;border-color:#c9dbf2}
+.ai-done{background:#f1f2f4;color:#5f5e5a;border-color:#dcdde1}
+.ai-cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:9px}
+.ai-cmp .cell{background:#fff;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-size:12.6px;line-height:1.75}
+.ai-cmp .k{font-size:11.5px;color:var(--text-3);margin-bottom:3px}
+.ai-cmp .cell.new{border-color:#c9dbf2;background:#fbfdff}
+.ai-reason{font-size:12.2px;color:var(--text-2);margin-top:8px;line-height:1.8}
+.ai-bad{font-size:12.2px;color:#a32d2d;margin-top:6px}
+.ai-prog{display:flex;align-items:center;gap:10px;
+  background:#eef4fd;border:1px solid #c9dbf2;border-radius:9px;padding:9px 13px;
+  font-size:12.8px;color:#1c4e8a;margin-bottom:12px}
+.ai-prog .msg{flex:1;min-width:0}
+.ai-prog button{padding:3px 10px;font-size:12px;background:#fff;border-color:#c9dbf2;color:#1c4e8a}
+.ai-prog button:hover{background:#f6faff;border-color:#a9c7ea}
+/* 暂停中整条换成琥珀色，跟"正在跑"一眼能分开 */
+.ai-prog.paused{background:#fdf7ea;border-color:#efd8a6;color:#7a4d00}
+.ai-prog.paused button{border-color:#efd8a6;color:#7a4d00}
+.ai-prog.paused button:hover{background:#fffdf6}
+.imp-table .del-btn{padding:2px 7px;line-height:1.2;font-size:14px;color:var(--text-3)}
+.imp-table .del-btn:hover{color:var(--danger);border-color:#f0c2c2;background:#fdf3f3}
+.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.38);display:flex;align-items:center;justify-content:center;z-index:80;padding:20px}
+.modal{background:#fff;border-radius:12px;width:780px;max-width:96vw;max-height:84vh;display:flex;flex-direction:column;overflow:hidden}
+.modal-h{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid var(--line)}
+.modal-b{overflow:auto;flex:1;padding:2px 0}
+.modal-f{display:flex;justify-content:flex-end;gap:8px;padding:11px 16px;border-top:1px solid var(--line)}
+.pk-row{display:flex;align-items:center;gap:9px;padding:8px 16px;border-bottom:1px solid #f4f5f7;font-size:12.8px;cursor:pointer}
+.pk-row:hover{background:#fafbfd}
+.pk-row input{width:15px;height:15px;flex:0 0 15px;margin:0}
+.pk-stem{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+@media print{
+  /* 页边距交给 @page，正文靠 margin box 打页脚；.a4 不再自己撑内边距 */
+  @page{size:A4;margin:12mm 13mm 15mm;
+    @bottom-center{content:"第 " counter(page) " 页  共 " counter(pages) " 页";
+      font-family:"SimSun","Songti SC",serif;font-size:9pt;color:#333}}
+  body{background:#fff}
+  /* 卷面上只能有试卷：侧栏、页头、按钮、切换标签一律不打印 */
+  .side,.page-head,.no-print,.toast,.tabs{display:none!important}
+  .layout{display:block;min-height:auto}
+  .paper-frame{padding:0;overflow:visible;background:#fff}
+  .main{padding:0;overflow:visible}
+  .a4{width:auto;min-height:auto;box-shadow:none;border:0;margin:0;padding:0}
+  .a4.break{page-break-after:always}
+  .q{break-inside:avoid}
+}
+@media (max-width:1200px){.paper-layout{grid-template-columns:1fr}.paper-side{position:static}}
+@media (max-width:1100px){.grid2{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<div class="stale-bar" id="staleBar" hidden>
+  <span>⚠</span>
+  <span class="desc"><b>软件代码已更新，但本机运行的还是旧版本</b>，新加的按钮点下去会报
+    <code>not found</code>。请先双击 <code>停止试卷系统.bat</code>，再双击
+    <code>启动试卷系统.bat</code>（数据库和题库不受影响）。</span>
+  <button class="close" onclick="document.getElementById('staleBar').hidden=true;document.body.classList.remove('has-stale')">知道了</button>
+</div>
+<div class="layout">
+  <aside class="side">
+    <div class="brand">
+      <b>机房运维试卷系统</b>
+      <span>ZJLab · 本机版</span>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      数据文件<br><code id="dataPath">data/library.db</code>
+    </div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = {
+  async get(url){ const r = await fetch(url); return r.json(); },
+  async post(url, body){ const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})}); return r.json(); },
+  async del(url){ const r = await fetch(url, {method:'DELETE'}); return r.json(); }
+};
+const STATE = { cats:[], settings:{}, stats:null, types:[], diffs:[], ai:null };
+const TYPENAME = {single:'单项选择题', multi:'多项选择题', judge:'判断题', fill:'填空题', qa:'问答题'};
+const DIFFNAME = {easy:'易', mid:'中', hard:'难'};
+const PAGES = [
+  {key:'dashboard', name:'工作台', icon:'◫'},
+  {key:'bank', name:'题库管理', icon:'☰'},
+  {key:'editor', name:'单题录入', icon:'✎'},
+  {key:'import', name:'批量导入', icon:'⇪'},
+  {key:'paper', name:'自动组卷', icon:'◈'},
+  {key:'papers', name:'试卷库', icon:'▤'},
+  {key:'settings', name:'系统设置', icon:'⚙'}
+];
+const FILTER = {cat:'', sub:'', type:'', diff:'', kw:'', answer:'', ai:'', sort:'id_desc', page:1, size:20};
+const AI_LABEL = {filled:'AI 建议', ok:'AI 一致', wrong:'AI 判错', unsure:'AI 存疑'};
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(msg, err){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast on' + (err?' err':'');
+  clearTimeout(t._t); t._t = setTimeout(()=>t.className='toast', 2600);
+}
+function pointsOf(type, diff){ const t = STATE.types.find(x=>x.key===type); return t ? (t.points[diff]||0) : 0; }
+function defaultScore(type, blanks){
+  const s = STATE.settings;
+  if(type==='fill') return (parseFloat(s.score_fill_blank||1)) * Math.max(1, blanks||1);
+  return parseFloat(s['score_'+type] || 1);
+}
+
+function renderNav(){
+  let cur = location.hash.replace('#','').split('?')[0] || 'dashboard';
+  if(cur === 'paper-detail') cur = 'papers';
+  document.getElementById('nav').innerHTML = PAGES.map(p=>
+    `<a href="#${p.key}" class="${p.key===cur?'on':''}"><span class="dot"></span>${p.name}</a>`
+  ).join('');
+}
+
+async function loadState(){
+  STATE.data = await API.get('/api/state');
+  STATE.cats = STATE.data.categories;
+  STATE.settings = STATE.data.settings;
+  STATE.stats = STATE.data.stats;
+  STATE.types = STATE.data.types;
+  STATE.diffs = STATE.data.diffs;
+  document.getElementById('dataPath').textContent = STATE.data.data_dir + '\\library.db';
+  // AI 配置单独取：取不到不影响主流程（老数据目录里可能还没有 ai.json）
+  try{
+    const r = await API.get('/api/ai/config');
+    STATE.ai = (r && r.config) || null;
+  }catch(e){ STATE.ai = null; }
+}
+
+function go(key){ location.hash = key; }
+
+// ---------------------------------------------------------------- 工作台
+/** 题库健康度（FR-HM-03）：拿默认模板的题量需求跟现有题量逐项比 */
+async function loadHealth(){
+  const box = document.getElementById('healthBox');
+  if(!box) return;
+  let cfg;
+  try{ cfg = await API.get('/api/paper/default'); }
+  catch(e){ box.innerHTML = '<span class="hint">读取默认模板失败</span>'; return; }
+  if(!box.isConnected) return;
+  const avail = {};
+  // 只用"有答案"的题数：缺答案的题不参与组卷，算进可用量会让健康度说"够用"、
+  // 实际组卷却凑不出题。
+  ((STATE.stats && STATE.stats.by_type) || []).forEach(t=>{ avail[t.type] = (t.ready!==undefined?t.ready:t.count); });
+  const rows = ((cfg && cfg.rows) || []).filter(r=>r.enabled && r.count>0);
+  const short = [];
+  const items = rows.map(r=>{
+    const have = avail[r.qtype] || 0;
+    const lack = r.count - have;
+    if(lack > 0) short.push((TYPENAME[r.qtype]||r.qtype) + ' 缺 ' + lack + ' 题');
+    return `<span style="display:inline-block;margin-right:20px;line-height:2;color:${lack>0?'#b45309':'var(--text-2)'}">
+      ${TYPENAME[r.qtype]||r.qtype} <b>${have}</b>/${r.count}${lack>0?`（缺 ${lack}）`:''}</span>`;
+  }).join('');
+  box.innerHTML = `<div>${items}</div>` + (short.length
+    ? `<div style="margin-top:6px;color:#b45309;font-size:12.5px;line-height:1.9">
+        题库不足，按默认模板组卷会失败：${short.join('；')}。先补这些题型，或调小组卷题量。</div>`
+    : `<div style="margin-top:6px;color:#15803d;font-size:12.5px;line-height:1.9">
+        按默认模板题库够用，可以直接组卷。</div>`);
+  const draft = (STATE.stats && STATE.stats.draft) || 0;
+  if(draft > 0){
+    box.innerHTML += `<div class="hint" style="margin-top:6px;color:#b42318;line-height:1.9">
+      另有 ${draft} 道题缺答案，暂不参与组卷。到题库页把「答案状态」切到「只看缺答案」，逐题补上即可。</div>`;
+  }
+}
+
+function viewDashboard(){
+  const st = STATE.stats;
+  const maxCat = Math.max(1, ...st.by_cat.map(c=>c.count));
+  const typeRows = st.by_type.map(t=>{
+    const pct = st.total ? Math.round(t.count/st.total*100) : 0;
+    return `<div class="bar-row"><span class="n">${t.name.replace('项选择','选').replace('判断题','判断').replace('填空题','填空').replace('问答题','问答')}</span>
+      <span class="t"><i style="width:${pct}%"></i></span><span class="c">${t.count}</span></div>`;
+  }).join('');
+  const diffRows = st.by_diff.map(d=>{
+    const pct = st.total ? Math.round(d.count/st.total*100) : 0;
+    return `<div class="bar-row"><span class="n">${d.name}</span>
+      <span class="t"><i style="width:${pct}%;background:${d.diff==='easy'?'#86c9a0':d.diff==='mid'?'#e5c07b':'#e59a9a'}"></i></span>
+      <span class="c">${d.count}</span></div>`;
+  }).join('');
+  const recent = st.recent.length ? st.recent.map(p=>
+    `<div class="bar-row"><span class="n" style="width:auto;flex:1"><a href="#papers">${esc(p.no)}</a>　${esc(p.title)}</span>
+     <span class="c" style="width:70px">${p.total_score} 分</span>
+     <span class="c" style="width:120px">${esc((p.created_at||'').slice(0,16))}</span></div>`
+  ).join('') : '<div class="empty" style="padding:18px">还没有生成过试卷</div>';
+  const gaps = st.by_type.filter(t=>t.count<10).map(t=>`${t.name}仅 ${t.count} 题`);
+  return `
+  <div class="page-head">
+    <div><h1>工作台</h1><p>题库规模与分布一眼看清，随时可以出卷</p></div>
+    <div class="actions">
+      <button onclick="go('editor')">新增题目</button>
+      <button class="primary" onclick="go('paper')">生成试卷</button>
+    </div>
+  </div>
+  <div class="metrics">
+    <div class="metric"><div class="k">题库总量</div><div class="v">${st.total}</div><div class="s">题</div></div>
+    <div class="metric"><div class="k">已生成试卷</div><div class="v">${st.papers}</div><div class="s">套</div></div>
+    <div class="metric"><div class="k">五大类覆盖</div><div class="v">${st.by_cat.filter(c=>c.count>0).length}/5</div><div class="s">有题的分类</div></div>
+    <div class="metric"><div class="k">难度构成</div><div class="v" style="font-size:15px">${st.by_diff.map(d=>d.name+' '+d.count).join(' · ')}</div><div class="s">易 · 中 · 难</div></div>
+  </div>
+  ${gaps.length?`<div class="notice" style="margin-bottom:14px">题量提醒：${gaps.join('，')}。单题型建议 ≥ 30 题，否则 100 分卷容易抽不满。</div>`:''}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h"><b>题库健康度</b><span class="hint">对照默认 100 分模板逐题型核对</span></div>
+    <div class="card-b" id="healthBox"><span class="hint">正在检查…</span></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><div class="card-h"><b>五大类题量</b><span style="font-size:12px;color:var(--text-3)">按一级分类统计</span></div>
+      <div class="card-b">${st.by_cat.map(c=>`<div class="bar-row"><span class="n">${c.name}</span><span class="t"><i style="width:${Math.round(c.count/maxCat*100)}%"></i></span><span class="c">${c.count}</span></div>`).join('')}</div>
+    </div>
+    <div class="card"><div class="card-h"><b>题型与难度</b></div>
+      <div class="card-b">${typeRows}<div class="split"></div>${diffRows}</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px"><div class="card-h"><b>最近试卷</b><a href="#papers" style="font-size:12.5px">全部试卷 →</a></div>
+    <div class="card-b">${recent}</div>
+  </div>`;
+}
+
+// ---------------------------------------------------------------- 题库
+async function viewBank(){
+  const qs = new URLSearchParams(Object.entries({...FILTER}).filter(([k,v])=>v!==''));
+  const data = await API.get('/api/questions?' + qs.toString());
+  const catOpts = ['<option value="">全部分类</option>'].concat(STATE.cats.map(c=>`<option value="${c.id}" ${FILTER.cat==c.id?'selected':''}>${c.name}</option>`)).join('');
+  const curCat = STATE.cats.find(c=>c.id==FILTER.cat);
+  const subOpts = ['<option value="">全部二级</option>'].concat((curCat?curCat.subs:[]).map(s=>`<option value="${s.id}" ${FILTER.sub==s.id?'selected':''}>${s.name}</option>`)).join('');
+  const typeOpts = ['<option value="">全部题型</option>'].concat(STATE.types.map(t=>`<option value="${t.key}" ${FILTER.type===t.key?'selected':''}>${t.name}</option>`)).join('');
+  const diffOpts = ['<option value="">全部难度</option>'].concat(STATE.diffs.map(d=>`<option value="${d.key}" ${FILTER.diff===d.key?'selected':''}>${d.name}</option>`)).join('');
+  const rows = data.items.map(q=>{
+    // 选项摘要：列表里就能看到选项，不用点开预览才知道选择题长什么样
+    const opts = (q.options || []).filter(o=>(o.text||'').trim());
+    const optLine = opts.length
+      ? `<div class="opt-line">${opts.map(o=>`${esc(o.key)}. ${esc(o.text)}`).join('&emsp;')}</div>` : '';
+    // AI 建议在列表上就要看得见，否则 300 条草稿题里不知道该点进哪一条
+    const aiTag = q.ai
+      ? `<span class="ai-tag ai-${esc(q.ai.verdict)}" title="点开这道题查看 AI 的建议" onclick="location.hash='editor?id=${q.id}'">${AI_LABEL[q.ai.verdict]||'AI 建议'}</span>`
+      : '';
+    return `
+    <tr>
+      <td style="width:34px"><input type="checkbox" class="pick" value="${q.id}" style="width:auto"></td>
+      <td class="stem"><div class="txt">${esc(q.stem)}</div>
+        ${optLine}
+        <div class="meta">#${q.id} · ${esc(q.cat_name)}/${esc(q.sub_name)}${q.blanks?` · ${q.blanks} 空`:''}${q.answer?'':' · <span class="miss-ans">缺答案</span>'}${aiTag}</div></td>
+      <td><span class="tag t-${q.qtype}">${q.type_name}</span></td>
+      <td class="d-${q.diff}">${q.diff_name}</td>
+      <td class="num">${q.final_score}</td>
+      <td class="num">${q.points}</td>
+      <td class="num">${q.used_count}</td>
+      <td style="white-space:nowrap">
+        <button class="ghost pv-btn" onclick="previewQ(${q.id})">预览</button>
+        <button class="ghost" onclick="location.hash='editor?id=${q.id}'">编辑</button>
+        <button class="ghost danger" onclick="delQuestion(${q.id})">删除</button>
+      </td>
+    </tr>`;}).join('');
+  const totalPage = Math.max(1, Math.ceil(data.total/data.size));
+  return `
+  <div class="page-head">
+    <div><h1>题库管理</h1><p>共 ${data.total} 道题，当前第 ${data.page}/${totalPage} 页</p></div>
+    <div class="actions">
+      <button id="bulkBtn" onclick="openBulk()">批量修改</button>
+      <button id="aiBtn" onclick="aiReviewPicked()">AI 审校</button>
+      <button href="javascript:;" onclick="exportBank()">导出 Excel</button>
+      <button onclick="bulkDelete()">批量删除</button>
+      <button onclick="go('import')">批量导入</button>
+      <button class="primary" onclick="go('editor')">新增题目</button>
+    </div>
+  </div>
+  <div class="filters">
+    <select id="fCat" onchange="setFilter('cat', this.value, true)">${catOpts}</select>
+    <select id="fSub" onchange="setFilter('sub', this.value)">${subOpts}</select>
+    <select id="fType" onchange="setFilter('type', this.value)">${typeOpts}</select>
+    <select id="fDiff" onchange="setFilter('diff', this.value)">${diffOpts}</select>
+    <select id="fAnswer" onchange="setFilter('answer', this.value)">
+      <option value="" ${FILTER.answer===''?'selected':''}>全部答案状态</option>
+      <option value="missing" ${FILTER.answer==='missing'?'selected':''}>只看缺答案</option>
+      <option value="has" ${FILTER.answer==='has'?'selected':''}>只看已有答案</option>
+    </select>
+    <select id="fAi" onchange="setFilter('ai', this.value)">
+      <option value="" ${FILTER.ai===''?'selected':''}>全部 AI 状态</option>
+      <option value="suspect" ${FILTER.ai==='suspect'?'selected':''}>AI 判错 / 存疑</option>
+      <option value="pending" ${FILTER.ai==='pending'?'selected':''}>有未处理的 AI 建议</option>
+    </select>
+    <input id="fKw" class="grow" placeholder="搜索题干 / 答案 / 标签" value="${esc(FILTER.kw)}"
+      onkeydown="if(event.key==='Enter') setFilter('kw', this.value)">
+    <select onchange="setFilter('sort', this.value)">
+      <option value="id_desc" ${FILTER.sort==='id_desc'?'selected':''}>最新录入</option>
+      <option value="id_asc" ${FILTER.sort==='id_asc'?'selected':''}>最早录入</option>
+      <option value="used" ${FILTER.sort==='used'?'selected':''}>使用最多</option>
+      <option value="updated" ${FILTER.sort==='updated'?'selected':''}>最近修改</option>
+    </select>
+    <button onclick="refreshBank()">查询</button>
+  </div>
+  <div class="card">
+    ${data.items.length?`<table>
+      <thead><tr><th><input type="checkbox" onclick="toggleAll(this)" style="width:auto"></th><th>题目</th><th>题型</th><th>难度</th><th>分值</th><th>积分</th><th>使用</th><th>操作</th></tr></thead>
+      <tbody>${rows}</tbody></table>`:`<div class="empty">没有符合条件的题目</div>`}
+    <div class="pager">
+      <span>共 ${data.total} 条</span>
+      <div class="btns">
+        <button onclick="setFilter('page',${Math.max(1,data.page-1)})" ${data.page<=1?'disabled':''}>上一页</button>
+        <span>${data.page} / ${totalPage}</span>
+        <button onclick="setFilter('page',${Math.min(totalPage,data.page+1)})" ${data.page>=totalPage?'disabled':''}>下一页</button>
+        <select onchange="setFilter('size', this.value); setFilter('page',1)" style="width:auto;padding:3px 6px;font-size:12px">
+          ${[20,50,100].map(n=>`<option value="${n}" ${FILTER.size==n?'selected':''}>${n} 条/页</option>`).join('')}
+        </select>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** 单题预览（FR-QB-08）：完整题干、选项、答案、解析、难度积分 */
+async function previewQ(id){
+  const q = await API.get('/api/questions/' + id);
+  if(!q || q.ok === false){ toast('题目不存在', true); return; }
+  const opts = (q.options || []).filter(o=>(o.text||'').trim())
+    .map(o=>`<div style="padding:2px 0">${esc(o.key)}. ${esc(o.text)}</div>`).join('');
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `<div class="modal-mask" id="qPreview"
+      onclick="if(event.target===this) closePreview()">
+    <div class="modal" style="width:640px">
+      <div class="modal-h"><b>题目预览 #${q.id}</b>
+        <button class="ghost close" onclick="closePreview()">关闭</button></div>
+      <div class="modal-b" style="padding:14px 16px;line-height:1.85">
+        <div style="font-size:12.5px;color:var(--text-3);margin-bottom:6px">
+          ${esc(q.type_name)} · ${esc(q.diff_name)} · 难度积分 ${pointsOf(q.qtype, q.diff)} 分
+          ${q.blanks?` · ${q.blanks} 空`:''}</div>
+        <div style="font-size:14px;white-space:pre-wrap">${esc(q.stem)}</div>
+        ${opts?`<div style="margin-top:10px">${opts}</div>`:''}
+        <div style="margin-top:12px"><b>答案：</b>${esc(q.answer)}</div>
+        ${q.analysis?`<div style="margin-top:6px;color:var(--text-2)"><b>解析：</b>${esc(q.analysis)}</div>`:''}
+      </div>
+      <div class="modal-f"><button onclick="closePreview()">关闭</button></div>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap.firstElementChild);
+}
+function closePreview(){
+  const el = document.getElementById('qPreview');
+  if(el) el.remove();
+}
+
+/** 批量修改（FR-QB-06）：分类与难度各选各的，留空表示不改 */
+function openBulk(){
+  const ids = pickedIds();
+  if(!ids.length) return toast('请先勾选题目', true);
+  if(document.getElementById('bulkPanel')) return;
+  const cats = STATE.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const diffs = STATE.diffs.map(d=>`<option value="${d.key}">${d.name}</option>`).join('');
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `<div class="modal-mask" id="bulkPanel"
+      onclick="if(event.target===this) closeBulk()">
+    <div class="modal" style="width:460px">
+      <div class="modal-h"><b>批量修改 ${ids.length} 道题</b>
+        <button class="ghost" onclick="closeBulk()">关闭</button></div>
+      <div class="modal-b" style="padding:14px 16px">
+        <label>改分类（二级自动换到该分类第一个）</label>
+        <select class="b-cat"><option value="">不变</option>${cats}</select>
+        <label style="margin-top:12px">改难度</label>
+        <select class="b-diff"><option value="">不变</option>${diffs}</select>
+        <div class="hint" style="margin-top:10px">留「不变」的项不会被改动。</div>
+      </div>
+      <div class="modal-f">
+        <button onclick="closeBulk()">取消</button>
+        <button class="primary b-apply" onclick="applyBulk()">应用</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap.firstElementChild);
+}
+function closeBulk(){
+  const el = document.getElementById('bulkPanel');
+  if(el) el.remove();
+}
+function pickedIds(){
+  return [...document.querySelectorAll('.pick')].filter(c=>c.checked).map(c=>Number(c.value));
+}
+async function applyBulk(){
+  const ids = pickedIds();
+  if(!ids.length) return toast('请先勾选题目', true);
+  const catEl = document.querySelector('#bulkPanel .b-cat');
+  const diffEl = document.querySelector('#bulkPanel .b-diff');
+  const jobs = [];
+  if(catEl && catEl.value) jobs.push(['cat_id', Number(catEl.value)]);
+  if(diffEl && diffEl.value) jobs.push(['diff', diffEl.value]);
+  if(!jobs.length) return toast('没有选择要修改的项', true);
+
+  for(const [field, value] of jobs){
+    const r = await API.post('/api/questions/bulk',
+      {action:'update', field, value, ids});
+    if(!r.ok){ toast((r.errors||['修改失败']).join('；'), true); return; }
+  }
+  closeBulk();
+  toast('已修改 ' + ids.length + ' 道题');
+  route();
+}
+
+/** 按当前筛选导出（FR-QB-07） */
+function exportBank(){
+  const qs = new URLSearchParams(Object.entries({...FILTER})
+    .filter(([k,v])=>v!=='' && !['page','size','sort'].includes(k)));
+  location.href = '/api/questions/export?' + qs.toString();
+}
+
+function setFilter(k, v, resetSub){
+  if(k==='cat' && resetSub){ FILTER.sub=''; }
+  FILTER[k] = (k==='page'||k==='size') ? Number(v) : v;
+  if(k!=='page') FILTER.page = 1;
+  route();
+}
+function refreshBank(){ FILTER.kw = document.getElementById('fKw').value; FILTER.page=1; route(); }
+function toggleAll(el){ document.querySelectorAll('.pick').forEach(c=>c.checked=el.checked); }
+async function bulkDelete(){
+  const ids = [...document.querySelectorAll('.pick')].filter(c=>c.checked).map(c=>Number(c.value));
+  if(!ids.length) return toast('请先勾选题目', true);
+  if(!confirm(`确认删除选中的 ${ids.length} 道题？`)) return;
+  const r = await API.post('/api/questions/bulk', {action:'delete', ids});
+  toast(`已删除 ${r.deleted||0} 道题`); route();
+}
+async function delQuestion(id){
+  if(!confirm('确认删除这道题？')) return;
+  await API.del('/api/questions/'+id);
+  toast('已删除'); route();
+}
+
+// ---------------------------------------------------------------- 录入
+let EDIT = null;
+function blankQuestion(){
+  const c0 = STATE.cats[0] || {id:'', subs:[]};
+  return {id:0, cat_id:c0.id, sub_id:(c0.subs[0]||{}).id||'', qtype:'single', diff:'mid',
+    stem:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}],
+    answer:'', blanks:0, score:'', analysis:'', tags:''};
+}
+function syncEditorDom(){
+  if(!EDIT) return;
+  const v = id => { const el = document.getElementById(id); return el ? el.value : undefined; };
+  const stem = v('eStem'); if(stem!==undefined) EDIT.stem = stem;
+  const ans = v('eAnswer'); if(ans!==undefined) EDIT.answer = ans;
+  const score = v('eScore'); if(score!==undefined) EDIT.score = score;
+  const ana = v('eAnalysis'); if(ana!==undefined) EDIT.analysis = ana;
+  const tags = v('eTags'); if(tags!==undefined) EDIT.tags = tags;
+  const cat = v('eCat'); if(cat!==undefined) EDIT.cat_id = Number(cat);
+  const sub = v('eSub'); if(sub!==undefined && sub!=='') EDIT.sub_id = Number(sub);
+  const bl = v('eBlanks'); if(bl!==undefined) EDIT.blanks = Math.max(1, Number(bl)||1);
+}
+async function viewEditor(params){
+  const id = Number(params.id || 0);
+  if(id){
+    if(!EDIT || EDIT.id !== id){
+      const r = await API.get('/api/questions/'+id);
+      if(!r || r.ok === false){ toast('题目不存在', true); go('bank'); return ''; }
+      EDIT = r;
+    }
+  } else if(!EDIT || EDIT.id){
+    EDIT = blankQuestion();
+  }
+  const q = EDIT;
+  if(!q.cat_id && STATE.cats.length){
+    q.cat_id = STATE.cats[0].id; q.sub_id = STATE.cats[0].subs[0].id;
+  }
+  const cats = STATE.cats.map(c=>`<option value="${c.id}" ${q.cat_id==c.id?'selected':''}>${c.name}</option>`).join('');
+  const curCat = STATE.cats.find(c=>c.id==q.cat_id) || STATE.cats[0];
+  const subs = (curCat?curCat.subs:[]).map(s=>`<option value="${s.id}" ${q.sub_id==s.id?'selected':''}>${s.name}</option>`).join('');
+  const types = STATE.types.map(t=>`<button type="button" class="${q.qtype===t.key?'on':''}" onclick="setType('${t.key}')">${t.name}</button>`).join('');
+  const diffs = STATE.diffs.map(d=>`<button type="button" class="${q.diff===d.key?'on':''}" onclick="setDiff('${d.key}')">${d.name}</button>`).join('');
+  return `
+  <div class="page-head">
+    <div><h1>${id?'编辑题目':'单题录入'}</h1><p>带 * 为必填；保存后可直接勾选继续录下一题</p></div>
+    <div class="actions">
+      <button onclick="go('bank')">返回题库</button>
+      <button class="primary" onclick="saveQuestion(false)">保存</button>
+    </div>
+  </div>
+  <div class="card"><div class="card-b">
+    <div class="form">
+      <div class="f c3"><label>一级分类<em>*</em></label><select id="eCat" onchange="onCatChange()">${cats}</select></div>
+      <div class="f c3"><label>二级分类<em>*</em></label><select id="eSub">${subs}</select></div>
+      <div class="f c6"><label>题型<em>*</em></label><div class="seg" id="eType">${types}</div></div>
+
+      <div class="f c6"><label>难度<em>*</em></label><div class="seg" id="eDiff">${diffs}</div></div>
+      <div class="f c6"><label>建议分值（留空按题型默认）</label><input id="eScore" type="number" min="0" step="0.5" value="${q.score==null?'':q.score}" placeholder="默认 ${defaultScore(q.qtype,q.blanks)}"></div>
+
+      <div class="f"><label>题干<em>*</em></label>
+        <textarea id="eStem" oninput="onStemInput()" placeholder="题干支持多行；填空题用连续下划线表示空位，例如：机房温度应控制在 18~____ ℃。">${esc(q.stem)}</textarea>
+        <div class="hint" id="stemHint"></div>
+      </div>
+
+      <div class="f" id="optArea"></div>
+      <div class="f" id="ansArea"></div>
+      <div class="f" id="aiArea"></div>
+
+      <div class="f c6"><label>解析（显示在答案卷）</label><textarea id="eAnalysis" style="min-height:64px">${esc(q.analysis)}</textarea></div>
+      <div class="f c6"><label>标签</label><input id="eTags" value="${esc(q.tags)}" placeholder="用逗号分隔，如 UPS,应急,新人必考">
+        <div class="hint">标签只用于检索，不参与组卷。</div></div>
+
+      <div class="f"><div class="scorebox">
+        <span>本题分值 <b id="sbScore">0</b> 分</span>
+        <span>难度积分 <b id="sbPoint">0</b></span>
+        <span id="sbExtra"></span>
+      </div></div>
+    </div>
+  </div></div>
+  <div style="display:flex;gap:8px;margin-top:14px">
+    <button class="primary save-btn" onclick="saveQuestion(false)">保存</button>
+    <button onclick="saveQuestion(true)">保存并继续录入</button>
+    <button class="ghost" onclick="resetEditor(); route()">清空重填</button>
+  </div>`;
+}
+
+function resetEditor(){ EDIT = null; }
+function setType(t){
+  syncEditorDom();
+  EDIT.qtype = t;
+  if(t!=='single' && t!=='multi') EDIT.answer = '';
+  if(t==='judge' && !EDIT.answer) EDIT.answer = '正确';
+  if((t==='single'||t==='multi') && (!EDIT.options || EDIT.options.length<2)){
+    EDIT.options = [{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}];
+  }
+  route();
+}
+function setDiff(d){ syncEditorDom(); EDIT.diff = d; route(); }
+function onCatChange(){
+  syncEditorDom();
+  const cid = Number(document.getElementById('eCat').value);
+  EDIT.cat_id = cid;
+  const cat = STATE.cats.find(c=>c.id===cid);
+  EDIT.sub_id = cat && cat.subs.length ? cat.subs[0].id : '';
+  route();
+}
+function onStemInput(){
+  EDIT.stem = document.getElementById('eStem').value;
+  if(EDIT.qtype==='fill'){
+    const n = Math.max(1, (EDIT.stem.match(/_{2,}/g)||[]).length);
+    EDIT.blanks = n;
+    const h = document.getElementById('stemHint');
+    if(h) h.textContent = `自动识别到 ${n} 个空位，分值按 ${n} × 每空 ${STATE.settings.score_fill_blank} 分计算`;
+    updateScoreBox();
+  }
+}
+function updateScoreBox(){
+  if(!EDIT) return;
+  const blanks = EDIT.qtype==='fill' ? Math.max(1, EDIT.blanks || (EDIT.stem.match(/_{2,}/g)||[]).length) : 0;
+  const sc = EDIT.score ? Number(EDIT.score) : defaultScore(EDIT.qtype, blanks);
+  const pt = pointsOf(EDIT.qtype, EDIT.diff);
+  const s1 = document.getElementById('sbScore'); if(s1) s1.textContent = (Math.round(sc*100)/100);
+  const s2 = document.getElementById('sbPoint'); if(s2) s2.textContent = pt;
+  const s3 = document.getElementById('sbExtra'); if(s3) s3.textContent = EDIT.qtype==='fill' ? `（${blanks} 空 × ${STATE.settings.score_fill_blank} 分/空）` : '';
+}
+
+function bindEditorDom(){
+  if(!EDIT) return;
+  const t = EDIT.qtype;
+  const optArea = document.getElementById('optArea');
+  const ansArea = document.getElementById('ansArea');
+  if(t==='single'||t==='multi'){
+    if(!EDIT.options || !EDIT.options.length) EDIT.options = [{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}];
+    optArea.innerHTML = `<div class="section-title">选项（${t==='single'?'单选，答案唯一':'多选，答案至少 2 项'}）</div>` +
+      EDIT.options.map((o,i)=>`<div class="opt-row" draggable="true" data-oi="${i}"
+          ondragstart="optDragStart(event,${i})" ondragover="optDragOver(event,${i})"
+          ondrop="optDrop(event,${i})" ondragend="optDragEnd()">
+        <span class="drag" title="按住拖动可调整顺序">⋮⋮</span>
+        <span class="key">${o.key}</span>
+        <input type="text" value="${esc(o.text)}" oninput="setOpt(${i}, this.value)" placeholder="选项内容">
+        <button class="ghost opt-up" title="上移" onclick="moveOpt(${i},${i-1})"
+          ${i===0?'disabled':''}>↑</button>
+        <button class="ghost opt-down" title="下移" onclick="moveOpt(${i},${i+1})"
+          ${i===EDIT.options.length-1?'disabled':''}>↓</button>
+        ${EDIT.options.length>2?`<button class="ghost" onclick="delOpt(${i})">删</button>`:''}</div>`).join('') +
+      (EDIT.options.length<6?`<button class="ghost" onclick="addOpt()">+ 增加选项</button>`:'');
+    ansArea.innerHTML = `<label>标准答案<em>*</em></label>
+      <input id="eAnswer" value="${esc(EDIT.answer)}" oninput="EDIT.answer=this.value.toUpperCase()" placeholder="${t==='single'?'如 C':'如 ABD'}">
+      <div class="hint">${t==='single'?'填写单个字母':'填写多个字母，如 ABD'}</div>`;
+  } else if(t==='judge'){
+    optArea.innerHTML = '';
+    ansArea.innerHTML = `<label>标准答案<em>*</em></label>
+      <div class="seg">${['正确','错误'].map(v=>`<button type="button" class="${EDIT.answer===v?'on':''}" onclick="EDIT.answer='${v}';route()">${v}</button>`).join('')}</div>`;
+  } else if(t==='fill'){
+    optArea.innerHTML = `<div class="section-title">填空设置</div>
+      <div style="display:flex;gap:12px;align-items:flex-end;max-width:520px">
+        <div style="width:140px"><label>空数</label><input id="eBlanks" type="number" min="1" value="${EDIT.blanks||1}" onchange="EDIT.blanks=Number(this.value)||1;updateScoreBox()"></div>
+        <div style="flex:1;color:var(--text-3);font-size:12px;padding-bottom:8px">题干中的连续下划线会自动计数，可手工修正</div>
+      </div>`;
+    ansArea.innerHTML = `<label>标准答案<em>*</em></label>
+      <input id="eAnswer" value="${esc(EDIT.answer)}" oninput="EDIT.answer=this.value" placeholder="多个空用竖线分隔，如：27|60">
+      <div class="hint">按空的顺序填写，空与空之间用 | 分隔；多个可接受答案用 / 分隔，如 1.5/1.50|27</div>`;
+  } else {
+    optArea.innerHTML = '';
+    ansArea.innerHTML = `<label>参考答案<em>*</em></label>
+      <textarea id="eAnswer" style="min-height:110px" oninput="EDIT.answer=this.value" placeholder="按要点分段描述，阅卷时作为评分参考">${esc(EDIT.answer)}</textarea>`;
+  }
+  updateScoreBox();
+  renderAiArea();
+}
+
+// ---------------------------------------------------------------- AI 审校
+// 建议为什么不能直接改库：模型会看走眼。所以建议自成一套状态（待处理/已采纳/已忽略），
+// 题目表在用户点「采纳」之前一个字都不动。
+
+const AI_TAG_CLASS = {filled:'ai-filled', ok:'ai-ok', wrong:'ai-wrong', unsure:'ai-unsure'};
+
+function aiSuggestHtml(rec){
+  if(!rec){
+    return `<div class="hint" style="margin-top:8px">还没有 AI 建议。缺答案就点上面那个按钮补答案，
+      有答案想核对就点它复核——同一个按钮，AI 自己判断该做哪件事。
+      审校用的是<b>已保存</b>的题目，改了题干请先保存。</div>`;
+  }
+  const done = rec.state === 'adopted';
+  const missed = rec.state === 'dismissed';
+  // 采纳后再拿页面上现在的值去比就没意义了（两栏会显示同一个答案），
+  // 所以"现有"一栏改显示采纳前留档的原值，标题也跟着改成"采纳前"。
+  const cls = done ? 'ai-ok' : (missed ? 'ai-done' : (AI_TAG_CLASS[rec.verdict] || 'ai-unsure'));
+  const label = done ? '已采纳' : (missed ? '已忽略' : (AI_LABEL[rec.verdict] || rec.verdict));
+  const pend = rec.state === 'pending';
+  const curA = done ? (rec.old_answer || '') : ((EDIT && EDIT.answer) || '');
+  const curN = done ? (rec.old_analysis || '') : ((EDIT && EDIT.analysis) || '');
+  const curLabel = done ? '采纳前' : '现有';
+  const sugA = rec.suggest_answer || '';
+  const sugN = rec.suggest_analysis || '';
+  const changed = sugA && sugA.replace(/\s/g,'') !== curA.replace(/\s/g,'');
+  const meta = (rec.confidence ? '置信度 ' + Math.round(rec.confidence*100) + '%' : '模型未给置信度')
+    + (rec.model ? ' · ' + rec.model : '');
+  const tail = pend
+    ? `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="primary" onclick="adoptAi(['answer','analysis'])" ${(rec.valid && (sugA||sugN))?'':'disabled'}>全部采纳</button>
+        <button onclick="adoptAi(['answer'])" ${(rec.valid && sugA)?'':'disabled'}>只采纳答案</button>
+        <button onclick="adoptAi(['analysis'])" ${(rec.valid && sugN)?'':'disabled'}>只采纳解析</button>
+        <button class="ghost" onclick="dismissAi()">忽略</button>
+      </div>`
+    : `<div class="hint" style="margin-top:8px">${rec.state==='adopted'?'已采纳，写进题库了。':'已忽略，不会再出现在待处理里。'}
+        ${rec.state==='adopted'?'<button class="ghost" style="margin-left:8px" onclick="undoAi()">撤销采纳</button>':''}</div>`;
+  return `<div style="margin-top:9px">
+      <span class="ai-tag ${cls}">${label}</span>
+      <span class="hint" style="display:inline-block;margin:0 0 0 8px">${esc(meta)}</span>
+    </div>
+    <div class="ai-cmp">
+      <div class="cell"><div class="k">${curLabel}</div>
+        答案：${curA?esc(curA):'<span class="miss-ans">（空）</span>'}<br>
+        解析：${curN?esc(curN.slice(0,300)):'<span style="color:var(--text-3)">（空）</span>'}</div>
+      <div class="cell new"><div class="k">AI 建议</div>
+        <span style="${changed?'color:#a32d2d':''}">答案：${sugA?esc(sugA):'（未给出）'}</span><br>
+        解析：${sugN?esc(sugN.slice(0,300)):'<span style="color:var(--text-3)">（未给出）</span>'}</div>
+    </div>
+    ${rec.reason?`<div class="ai-reason"><b>依据：</b>${esc(rec.reason)}</div>`:''}
+    ${rec.valid?'':`<div class="ai-bad">这条建议不能采纳：${esc(rec.problem||'格式不符')}</div>`}
+    ${tail}`;
+}
+
+function renderAiArea(){
+  const host = document.getElementById('aiArea');
+  if(!host || !EDIT) return;
+  const saved = !!EDIT.id;
+  host.innerHTML = `<div class="ai-box">
+    <div class="ai-head">
+      <b>AI 审校</b>
+      <span class="hint">只出建议，点「采纳」才改这道题</span>
+      <button class="ghost" onclick="aiReviewOne()" ${saved?'':'disabled title="先保存这道题，AI 才能看到它"'}>AI 审校这题</button>
+    </div>
+    <div id="aiSuggest">${aiSuggestHtml(EDIT.ai_review)}</div>
+  </div>`;
+}
+
+async function aiReviewOne(){
+  if(!EDIT || !EDIT.id) return toast('先保存这道题，AI 才能看到它', true);
+  syncEditorDom();
+  const box = document.getElementById('aiSuggest');
+  if(box) box.innerHTML = '<div class="hint" style="margin-top:8px">AI 正在审校…推理模型一题可能要十几秒，请稍候。</div>';
+  let r;
+  try{ r = await API.post('/api/ai/review', {id: EDIT.id}); }
+  catch(e){
+    if(box) box.innerHTML = `<div class="ai-bad">审校失败：${esc(e.message)}</div>`;
+    return;
+  }
+  if(!r.ok){
+    if(box) box.innerHTML = `<div class="ai-bad">${esc(r.error || '审校失败')}</div>`;
+    toast(r.error || '审校失败', true);
+    return;
+  }
+  if(!r.done || !r.done.length){
+    const err = ((r.failed||[])[0] || {}).error || '这道题没审出结果';
+    if(box) box.innerHTML = `<div class="ai-bad">${esc(err)}</div>`;
+    toast(err, true);
+    return;
+  }
+  const q = await API.get('/api/questions/' + EDIT.id);
+  EDIT.ai_review = q.ai_review || null;
+  if(box) box.innerHTML = aiSuggestHtml(EDIT.ai_review);
+  toast('AI 已给出建议，看下面的对比');
+}
+
+/** 采纳：只把用户勾的那几项写进题目，本地同步一下不必重新加载整页 */
+async function adoptAi(fields){
+  if(!EDIT || !EDIT.ai_review) return;
+  let r;
+  try{ r = await API.post('/api/ai/review/adopt', {ids:[EDIT.id], fields}); }
+  catch(e){ return toast('采纳失败：' + e.message, true); }
+  if(!r.ok || (r.errors||[]).length){
+    const e = ((r.errors||[])[0] || {}).error || r.error || '采纳失败';
+    return toast(e, true);
+  }
+  const rec = EDIT.ai_review;
+  if(fields.indexOf('answer') >= 0) EDIT.answer = rec.suggest_answer || EDIT.answer;
+  if(fields.indexOf('analysis') >= 0) EDIT.analysis = rec.suggest_analysis || EDIT.analysis;
+  rec.state = 'adopted';
+  toast('已采纳并写入题库');
+  route();
+}
+
+async function dismissAi(){
+  if(!EDIT || !EDIT.ai_review) return;
+  await API.post('/api/ai/review/dismiss', {ids:[EDIT.id]});
+  if(EDIT.ai_review) EDIT.ai_review.state = 'dismissed';
+  toast('已忽略这条建议');
+  route();
+}
+
+/** 撤销采纳：改回采纳前的答案与解析（只回滚这两项） */
+async function undoAi(){
+  if(!EDIT || !EDIT.ai_review) return;
+  let r;
+  try{ r = await API.post('/api/ai/review/undo', {ids:[EDIT.id]}); }
+  catch(e){ return toast('撤销失败：' + e.message, true); }
+  if(!r.ok || (r.errors||[]).length){
+    const e = ((r.errors||[])[0] || {}).error || r.error || '撤销失败';
+    return toast(e, true);
+  }
+  toast('已撤销，题目回到采纳前');
+  // 只把被回滚的两项与建议状态同步回来；页面上其他未保存的改动不动
+  const q = await API.get('/api/questions/' + EDIT.id);
+  EDIT.answer = q.answer;
+  EDIT.analysis = q.analysis;
+  EDIT.ai_review = q.ai_review;
+  route();
+}
+
+/** 批量审校的运行状态。放在模块级，是因为「暂停 / 继续 / 停止」按钮要去碰
+ *  正在跑的那个循环——循环停在 await 里等人，按钮负责把等待解开。 */
+const AI_RUN = { active:false, paused:false, stop:false, waiter:null, stage:'',
+                 total:0, done:0, idx:0, filled:0, bad:0, fail:0, firstErr:'', bar:null };
+
+/** 重画进度条。暂停要分两种状态说话：
+ *  点了暂停但当前这题还在跑（只能说"跑完就停"），和真的停下来了（可以说"已暂停"）。
+ *  混为一谈的话，用户点完暂停看到"已暂停"，以为停了却还在烧 token。 */
+function aiRenderBar(){
+  const bar = AI_RUN.bar;
+  if(!bar) return;
+  const msg = bar.querySelector('.msg');
+  const pauseBtn = bar.querySelector('.pause');
+  const n = AI_RUN.total;
+  bar.classList.toggle('paused', AI_RUN.paused);
+  if(AI_RUN.paused && AI_RUN.waiter){
+    msg.textContent = '已暂停：完成 ' + AI_RUN.done + '/' + n
+      + ' 题。点「继续」接着跑；已完成的建议都已存下，关页面不会丢。';
+    pauseBtn.textContent = '继续';
+    pauseBtn.disabled = false;
+  }else if(AI_RUN.paused){
+    msg.textContent = '正在审的这一题跑完就暂停（已完成 ' + AI_RUN.done + '/' + n + '）…';
+    pauseBtn.textContent = '继续';
+    pauseBtn.disabled = false;
+  }else{
+    msg.textContent = AI_RUN.stage
+      ? AI_RUN.stage + '（已完成 ' + AI_RUN.done + '/' + n + '）…'
+      : 'AI 正在审校，已完成 ' + AI_RUN.done + '/' + n + ' 题…';
+    pauseBtn.textContent = '暂停';
+    pauseBtn.disabled = false;
+  }
+  const btn = document.getElementById('aiBtn');
+  if(btn) btn.disabled = AI_RUN.active;
+}
+
+function aiTogglePause(){
+  if(!AI_RUN.active) return;
+  if(AI_RUN.paused){
+    AI_RUN.paused = false;
+    const w = AI_RUN.waiter;
+    AI_RUN.waiter = null;
+    if(w) w();
+  }else{
+    AI_RUN.paused = true;
+  }
+  aiRenderBar();
+}
+
+function aiStopRun(){
+  if(!AI_RUN.active) return;
+  AI_RUN.stop = true;
+  AI_RUN.paused = false;
+  const w = AI_RUN.waiter;
+  AI_RUN.waiter = null;
+  if(w) w();
+  aiRenderBar();
+}
+
+/** 每题开跑前的闸门：暂停时挂在这里，点「继续」时被 resolve 解开。 */
+function aiPauseGate(){
+  if(!AI_RUN.paused) return Promise.resolve();
+  return new Promise(res=>{ AI_RUN.waiter = res; aiRenderBar(); });
+}
+
+/** 题库页批量审校：**一题一个请求**。
+ *  原来 10 题一批，代价是"点了暂停要等这一批 10 题全跑完"——推理模型一题几十秒，
+ *  十分钟才停得下来，按钮形同虚设。改成逐题请求后，暂停粒度就是"当前这一题"；
+ *  本地环回多几个请求不花钱，顺带单题失败也只连累一题。 */
+async function aiReviewPicked(){
+  if(AI_RUN.active) return toast('已经在审校了，可以点「暂停」或「停止」', true);
+  const ids = pickedIds();
+  if(!ids.length) return toast('先勾选要审校的题目；缺答案的可以先用「只看缺答案」筛出来', true);
+  if(ids.length > 60) return toast('一次最多审校 60 题，先按筛选条件缩小范围再试', true);
+  if(!confirm('让 AI 审校这 ' + ids.length + ' 道题？\n'
+      + '· 缺答案的：给出答案和解析\n· 有答案的：复核对错、指出解析矛盾\n'
+      + '只出建议，不会自动改题库；要改得逐题点「采纳」。\n'
+      + '审校中可以随时「暂停」或「停止」。')) return;
+
+  const head = document.querySelector('.page-head');
+  const bar = document.createElement('div');
+  bar.className = 'ai-prog';
+  bar.innerHTML = '<span class="msg"></span>'
+    + '<button class="pause" onclick="aiTogglePause()">暂停</button>'
+    + '<button class="stop" onclick="aiStopRun()">停止</button>';
+  if(head && head.parentNode) head.parentNode.insertBefore(bar, head.nextSibling);
+
+  Object.assign(AI_RUN, {active:true, paused:false, stop:false, waiter:null, stage:'',
+                         total:ids.length, done:0, idx:0, filled:0, bad:0, fail:0,
+                         firstErr:'', bar:bar});
+  aiRenderBar();
+
+  let curJob = '';
+  const timer = setInterval(async ()=>{
+    if(!curJob || AI_RUN.paused) return;
+    try{
+      const p = await API.get('/api/ai/review/progress?job=' + encodeURIComponent(curJob));
+      if(p && p.state === 'running' && p.stage){
+        AI_RUN.stage = p.stage;
+        aiRenderBar();
+      }
+    }catch(_){ /* 查不到进度不影响主流程 */ }
+  }, 1500);
+
+  try{
+    while(AI_RUN.idx < ids.length && !AI_RUN.stop){
+      await aiPauseGate();
+      if(AI_RUN.stop) break;
+      const i = AI_RUN.idx;
+      AI_RUN.stage = '';
+      curJob = 'rv' + Date.now().toString(36) + '_' + i;
+      const r = await API.post('/api/ai/review', {ids: [ids[i]], job: curJob});
+      if(!r.ok){
+        if(!AI_RUN.firstErr) AI_RUN.firstErr = r.error || '审校失败';
+        break;
+      }
+      const got = r.done || [];
+      AI_RUN.done += got.length;
+      AI_RUN.filled += got.filter(d=>d.verdict === 'filled').length;
+      AI_RUN.bad += got.filter(d=>d.verdict === 'wrong' || d.verdict === 'unsure').length;
+      AI_RUN.fail += (r.failed || []).length;
+      if(!AI_RUN.firstErr && (r.failed||[]).length) AI_RUN.firstErr = r.failed[0].error || '';
+      AI_RUN.idx = i + 1;
+      aiRenderBar();
+    }
+  }catch(e){
+    if(!AI_RUN.firstErr) AI_RUN.firstErr = e.message;
+  }finally{
+    // finally 只负责收尾，不放 return：在 finally 里 return 会把异常吞掉，
+    // 也会跳过下面的汇总提示。
+    clearInterval(timer);
+    AI_RUN.active = false;
+    AI_RUN.waiter = null;
+    if(AI_RUN.bar) AI_RUN.bar.remove();
+    AI_RUN.bar = null;
+    const btn = document.getElementById('aiBtn');
+    if(btn) btn.disabled = false;
+  }
+
+  const stopped = AI_RUN.stop;
+  const left = ids.length - AI_RUN.idx;
+  if(!AI_RUN.done && AI_RUN.firstErr) return toast(AI_RUN.firstErr, true);
+  let out = (stopped ? '已停止：完成 ' : '审校完成 ') + AI_RUN.done + ' 题';
+  if(AI_RUN.filled) out += '，' + AI_RUN.filled + ' 题给了答案';
+  if(AI_RUN.bad) out += '，' + AI_RUN.bad + ' 题建议你核对';
+  if(AI_RUN.fail) out += '，' + AI_RUN.fail + ' 题没成功';
+  if(stopped && left > 0) out += '；还有 ' + left + ' 题没审（已完成的建议都在库里）';
+  toast(out);
+  if(AI_RUN.fail && AI_RUN.firstErr) console.warn('AI 审校未成功的题', AI_RUN.firstErr);
+  route();
+}
+
+/** 保存前查重提示（FR-QE-06）：不阻塞，点「仍然保存」才带 allow_dup 再提交 */
+let DUP_PAYLOAD = null;
+function showDupWarn(payload, dup){
+  DUP_PAYLOAD = payload;
+  const host = document.getElementById('editorStage') || document.querySelector('.main');
+  let el = document.getElementById('dupWarn');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'dupWarn';
+    host.insertBefore(el, host.firstChild);
+  }
+  el.style.cssText = 'background:#fff8e6;border:1px solid #f0dca8;border-radius:9px;'
+    + 'padding:10px 14px;margin-bottom:12px;font-size:12.8px;color:#7a5b12;line-height:1.8';
+  el.innerHTML = `<b>题库里已有相似的题目</b>（相似度 ${Math.round((dup.score||0)*100)}%）：
+    与 #${dup.id} 相似 —— “${esc(dup.stem)}”<br>
+    <span style="color:#8a6a20">确认不是同一道题的话，可以仍然保存。</span>
+    <button class="primary force-save" style="margin-left:10px" onclick="forceSave()">仍然保存</button>
+    <button class="ghost" style="margin-left:6px" onclick="document.getElementById('dupWarn').remove()">返回修改</button>`;
+}
+async function forceSave(){
+  if(!DUP_PAYLOAD) return;
+  const payload = {...DUP_PAYLOAD, allow_dup: true};
+  const r = await API.post('/api/questions', payload);
+  if(!r.ok){ toast((r.errors||['保存失败']).join('；'), true); return; }
+  DUP_PAYLOAD = null;
+  const el = document.getElementById('dupWarn');
+  if(el) el.remove();
+  toast('已保存（重复题）');
+  EDIT = null;
+  route();
+}
+
+function setOpt(i, v){ EDIT.options[i].text = v; }
+function addOpt(){ syncEditorDom(); EDIT.options.push({key:'ABCDEF'[EDIT.options.length], text:''}); route(); }
+function delOpt(i){ syncEditorDom(); EDIT.options.splice(i,1); EDIT.options.forEach((o,idx)=>o.key='ABCDEF'[idx]); route(); }
+
+/** 选项换位：内容跟着走，标号按新顺序重排（否则会出现 C 在 A 前面的怪状） */
+function moveOpt(from, to){
+  if(!EDIT || !EDIT.options) return;
+  if(from === to || to < 0 || to >= EDIT.options.length) return;
+  const [o] = EDIT.options.splice(from, 1);
+  EDIT.options.splice(to, 0, o);
+  EDIT.options.forEach((x, idx)=>x.key = 'ABCDEF'[idx]);
+  route();
+}
+let OPT_DRAG = null;
+function optDragStart(e, i){
+  OPT_DRAG = i;
+  if(e.dataTransfer){ e.dataTransfer.effectAllowed = 'move'; try{ e.dataTransfer.setData('text/plain', String(i)); }catch(_){} }
+}
+function optDragOver(e, i){ e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect = 'move'; }
+function optDrop(e, i){
+  e.preventDefault();
+  const from = (OPT_DRAG === null && e.dataTransfer)
+    ? Number(e.dataTransfer.getData('text/plain')) : OPT_DRAG;
+  OPT_DRAG = null;
+  if(Number.isFinite(from)) moveOpt(from, i);
+}
+function optDragEnd(){ OPT_DRAG = null; }
+
+async function saveQuestion(continueNext){
+  syncEditorDom();
+  const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const payload = {
+    id: EDIT.id || 0,
+    cat_id: Number(g('eCat')),
+    sub_id: Number(g('eSub')),
+    qtype: EDIT.qtype,
+    diff: EDIT.diff,
+    stem: g('eStem'),
+    options: (EDIT.qtype==='single'||EDIT.qtype==='multi') ? EDIT.options : [],
+    answer: EDIT.answer,
+    blanks: EDIT.qtype==='fill' ? Math.max(1, Number(g('eBlanks'))||1) : 0,
+    score: g('eScore') === '' ? null : Number(g('eScore')),
+    analysis: g('eAnalysis'),
+    tags: g('eTags')
+  };
+  const r = await API.post('/api/questions', payload);
+  if(!r.ok){
+    if(r.need_dup_confirm){ showDupWarn(payload, r.dup); return; }
+    toast((r.errors||['保存失败']).join('；'), true); return;
+  }
+  toast(continueNext?'已保存，继续录下一题':'已保存');
+  if(continueNext){
+    const keep = {cat_id:payload.cat_id, sub_id:payload.sub_id, qtype:payload.qtype, diff:payload.diff};
+    EDIT = {id:0, ...keep, stem:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', blanks:0, score:'', analysis:'', tags:''};
+  } else {
+    EDIT = null;
+  }
+  route();
+}
+
+// ---------------------------------------------------------------- 自动组卷
+let PCFG = null, PRE = null, PRE_TIMER = null;
+
+function rowOf(cfg, key){
+  return (cfg.rows || []).find(r=>r.qtype===key) || {enabled:false, count:0, score:1};
+}
+async function ensureCfg(){
+  if(PCFG) return PCFG;
+  const cfg = await API.get('/api/paper/default');
+  cfg.quotas = cfg.quotas || {};
+  STATE.cats.forEach(c=>{ if(cfg.quotas[c.id]===undefined) cfg.quotas[c.id]=''; });
+  PCFG = cfg;
+  return cfg;
+}
+function setMode(m){ PCFG.mode = m; route(); }
+function setDiffMode(m){ PCFG.diff_mode = m; route(); }
+function setQuotaMode(m){ PCFG.quota_mode = m; route(); }
+
+function readCfg(){
+  const g = id => { const el = document.getElementById(id); return el ? el.value : null; };
+  const ck = id => { const el = document.getElementById(id); return el ? el.checked : false; };
+  const cfg = PCFG;
+  cfg.title = g('pTitle') || '机房运维考试';
+  cfg.unit = g('pUnit') || '';
+  cfg.duration = Number(g('pDuration')) || 45;
+  cfg.rows = STATE.types.map(x=>({
+    qtype: x.key, enabled: ck('en_'+x.key),
+    count: Number(g('cnt_'+x.key)) || 0,
+    score: Number(g('sc_'+x.key)) || 0
+  }));
+  if(g('pTarget') !== null) cfg.diff_target = Number(g('pTarget')) || 0;
+  if(g('rEasy') !== null){
+    cfg.diff_ratio = {easy:Number(g('rEasy'))||0, mid:Number(g('rMid'))||0, hard:Number(g('rHard'))||0};
+  }
+  if(g('q_'+STATE.cats[0].id) !== null){
+    cfg.quotas = {};
+    STATE.cats.forEach(c=>{
+      const v = g('q_'+c.id);
+      cfg.quotas[c.id] = (v===''||v===null) ? '' : Number(v);
+    });
+  }
+  cfg.rules.avoid_recent.enabled = ck('rAvoid');
+  cfg.rules.avoid_recent.papers = Number(g('rAvoidN')) || 0;
+  cfg.rules.must.enabled = ck('rMust');
+  cfg.rules.scope.enabled = ck('rScope');
+  if(g('rTags') !== null){
+    cfg.rules.scope.tags = g('rTags') || '';
+    cfg.rules.scope.new_days = Number(g('rNewDays')) || 0;
+    cfg.rules.scope.new_ratio = Number(g('rNewRatio')) || 0;
+  }
+  return cfg;
+}
+function onCfg(){ PCFG = readCfg(); refreshPrecheck(); }
+function fitToBank(){
+  if(!PRE) return;
+  const cap = {};
+  PRE.by_type.forEach(b=>{ cap[b.qtype] = b.avail; });
+  STATE.types.forEach(t=>{
+    const el = document.getElementById('cnt_'+t.key);
+    if(!el) return;
+    const cur = Number(el.value) || 0;
+    const lim = cap[t.qtype] === undefined ? cur : cap[t.qtype];
+    el.value = Math.max(0, Math.min(cur, lim));
+  });
+  onCfg();
+  toast('已按题库可用量下调题量，请再确认难度积分与总分');
+}
+function refreshPrecheck(){
+  clearTimeout(PRE_TIMER);
+  PRE_TIMER = setTimeout(async ()=>{
+    try{
+      PRE = await API.post('/api/papers/precheck', readCfg());
+      renderPre();
+    }catch(e){}
+  }, 320);
+}
+
+function renderPre(){
+  const p = PRE; if(!p) return;
+  const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+  p.by_type.forEach(b=>{
+    set('av_'+b.qtype, b.avail);
+    set('sub_'+b.qtype, b.subtotal);
+    set('pts_'+b.qtype, b.points_min + '~' + b.points_max);
+  });
+  const box = document.getElementById('preBox');
+  if(!box) return;
+  const d = p.diff;
+  const tgt = d.mode === 'ratio' ? (d.points + '（占比换算）') : (d.target == null ? '—' : d.target);
+  const diffRows = d.items.filter(i=>i.easy+i.mid+i.hard>0).map(i=>
+    `<div class="pre-item"><span>${i.name.replace('单项选择题','单选').replace('多项选择题','多选')}</span><b>${i.easy} / ${i.mid} / ${i.hard}</b></div>`
+  ).join('');
+  const errHtml = p.errors.map(e=>`<div class="bad" style="font-size:12.3px;line-height:1.6">· ${esc(e)}</div>`).join('');
+  const warnHtml = p.warnings.map(e=>`<div style="font-size:12.3px;color:#8a6d1f;line-height:1.6">· ${esc(e)}</div>`).join('');
+  const quotaHtml = p.quota.items.length
+    ? `<div class="pre-item"><span>分类配额</span><b>${p.quota.items.map(i=>i.name+i.count).join(' / ')}</b></div>` : '';
+  box.innerHTML = `
+    <div class="card-h"><b>实时预检</b>
+      <span style="font-size:12px" class="${p.ok?'good':'bad'}">${p.ok?'可以生成':'需要调整'}</span>
+    </div>
+    <div class="card-b" style="padding:12px 14px">
+      <div class="pre-item"><span>题量</span><b>${p.total_count} 题</b></div>
+      <div class="pre-item"><span>卷面总分</span><b class="${Math.abs(p.total_score-100)>0.01?'bad':'good'}">${p.total_score} 分</b></div>
+      <div class="pre-item"><span>难度积分</span><b>${d.points} / 目标 ${tgt}</b></div>
+      <div class="pre-item"><span>可达区间</span><b>${d.min} ~ ${d.max}</b></div>
+      ${quotaHtml}
+      ${errHtml ? '<div style="margin-top:8px">'+errHtml+'</div>' : ''}
+      ${warnHtml ? '<div style="margin-top:8px">'+warnHtml+'</div>' : ''}
+      ${(!p.ok && p.gaps.length)
+        ? '<button style="width:100%;margin-top:10px;font-size:12.5px;padding:6px" onclick="fitToBank()">按题库可用量自动调整题量</button>'
+        : ''}
+      ${diffRows ? '<div class="section-title" style="margin:12px 0 6px">易 / 中 / 难 拆分</div>'+diffRows : ''}
+    </div>`;
+  const btn = document.getElementById('btnBuild');
+  if(btn){
+    btn.disabled = !p.ok;
+    btn.textContent = p.ok ? '生成试卷' : '条件不满足，无法生成';
+  }
+  const sum = document.getElementById('qSum');
+  if(sum && p.quota.items.length){
+    const tot = p.quota.items.reduce((a,b)=>a+b.count,0);
+    sum.textContent = tot + ' 题 / 共 ' + p.total_count + ' 题';
+    p.quota.items.forEach(i=>{
+      const el = document.getElementById('qc_'+i.cat_id);
+      if(el) el.textContent = '可用 ' + i.avail;
+    });
+  }
+}
+
+async function viewPaper(){
+  const cfg = await ensureCfg();
+  const rowHtml = STATE.types.map(x=>{
+    const r = rowOf(cfg, x.key);
+    return `<div class="qrow">
+      <label style="display:flex;align-items:center;gap:7px;color:var(--text)">
+        <input type="checkbox" id="en_${x.key}" ${r.enabled?'checked':''} onchange="onCfg()">${x.name}</label>
+      <span class="av" id="av_${x.key}">-</span>
+      <input type="number" min="0" id="cnt_${x.key}" value="${r.count}" oninput="onCfg()">
+      <input type="number" min="0" step="0.5" id="sc_${x.key}" value="${r.score}" oninput="onCfg()">
+      <span class="sub" id="sub_${x.key}">-</span>
+      <span class="sub" id="pts_${x.key}">-</span>
+    </div>`;
+  }).join('');
+
+  const quotaCard = cfg.mode === 'auto' ? '' : `
+    <div class="card" style="margin-top:14px">
+      <div class="card-h"><b>分类配额</b>
+        <div class="seg">
+          <button class="${cfg.quota_mode==='percent'?'on':''}" onclick="setQuotaMode('percent')">按比例 %</button>
+          <button class="${cfg.quota_mode==='count'?'on':''}" onclick="setQuotaMode('count')">按题数</button>
+        </div>
+      </div>
+      <div class="card-b">
+        ${STATE.cats.map(c=>`<div class="quota-row">
+          <span class="n">${c.name}</span>
+          <input type="number" min="0" id="q_${c.id}" value="${cfg.quotas[c.id]===undefined?'':cfg.quotas[c.id]}" oninput="onCfg()">
+          <span class="r" id="qc_${c.id}"></span>
+        </div>`).join('')}
+        <div class="hint">留空表示自动均分剩余；比例模式下合计应为 100%。<span id="qSum" style="color:var(--text-2)"></span></div>
+      </div>
+    </div>`;
+
+  const diffBody = cfg.diff_mode === 'ratio' ? `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      <div><label style="font-size:12.5px;color:var(--text-2)">易 %</label>
+        <input type="number" min="0" max="100" id="rEasy" value="${cfg.diff_ratio.easy}" oninput="onCfg()"></div>
+      <div><label style="font-size:12.5px;color:var(--text-2)">中 %</label>
+        <input type="number" min="0" max="100" id="rMid" value="${cfg.diff_ratio.mid}" oninput="onCfg()"></div>
+      <div><label style="font-size:12.5px;color:var(--text-2)">难 %</label>
+        <input type="number" min="0" max="100" id="rHard" value="${cfg.diff_ratio.hard}" oninput="onCfg()"></div>
+    </div>
+    <div class="hint">按占比分配题目，难度积分由分配结果反算，不再单独指定。</div>` : `
+    <div style="display:flex;gap:14px;align-items:flex-end">
+      <div style="width:180px"><label style="font-size:12.5px;color:var(--text-2)">目标难度积分</label>
+        <input type="number" min="0" id="pTarget" value="${cfg.diff_target}" oninput="onCfg()"></div>
+      <div class="hint" style="padding-bottom:8px">客观题易 0 / 中 1 / 难 2，问答题易 0 / 中 2 / 难 4。</div>
+    </div>`;
+
+  return `<div class="page-head">
+    <div><h1>自动组卷</h1><p>先选组卷方式，再填题型题量与分类配额，右下角实时预检</p></div>
+  </div>
+  <div class="paper-layout">
+    <div>
+      <div class="card">
+        <div class="card-h"><b>第一步 · 组卷方式</b></div>
+        <div class="card-b" style="padding:12px 14px">
+          <div class="modes">
+            <div class="mode ${cfg.mode==='auto'?'on':''}" onclick="setMode('auto')">
+              <b>系统自动</b><span>只按题型题量与难度积分抽题，五大类不限量</span></div>
+            <div class="mode ${cfg.mode==='quota'?'on':''}" onclick="setMode('quota')">
+              <b>按分类配额</b><span>一级分类按比例或题数分配，可下钻二级</span></div>
+            <div class="mode ${cfg.mode==='custom'?'on':''}" onclick="setMode('custom')">
+              <b>自定义组合</b><span>在配额基础上叠加排除、锁定、标签范围</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><b>第二步 · 题型与分值</b><span style="font-size:12px;color:var(--text-3)">填空题分值为每空分值</span></div>
+        <div class="card-b" style="padding:12px 14px">
+          <div class="qrow hd"><span>题型</span><span style="text-align:right">可用</span><span style="text-align:right">题量</span>
+            <span style="text-align:right">每题分值</span><span style="text-align:right">小计</span><span style="text-align:right">积分范围</span></div>
+          ${rowHtml}
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:14px">
+            <div class="f c4"><label>试卷标题</label><input id="pTitle" value="${esc(cfg.title)}" oninput="onCfg()"></div>
+            <div class="f c4"><label>单位名称</label><input id="pUnit" value="${esc(cfg.unit)}" oninput="onCfg()"></div>
+            <div class="f c4"><label>考试时长（分钟）</label><input type="number" min="10" id="pDuration" value="${cfg.duration}" oninput="onCfg()"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><b>第三步 · 难度控制</b>
+          <div class="seg">
+            <button class="${cfg.diff_mode==='points'?'on':''}" onclick="setDiffMode('points')">难度积分</button>
+            <button class="${cfg.diff_mode==='ratio'?'on':''}" onclick="setDiffMode('ratio')">易中难占比</button>
+          </div>
+        </div>
+        <div class="card-b">${diffBody}</div>
+      </div>
+
+      ${quotaCard}
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><b>第四步 · 附加规则</b><span style="font-size:12px;color:var(--text-3)">可叠加，预检会提示冲突</span></div>
+        <div class="card-b" style="padding:6px 16px 14px">
+          <div class="rule">
+            <input type="checkbox" id="rAvoid" ${cfg.rules.avoid_recent.enabled?'checked':''} onchange="onCfg()">
+            <div class="t">排除近期已用<span>近 N 套试卷出现过的题不再抽取</span></div>
+            <input type="number" min="0" max="10" id="rAvoidN" value="${cfg.rules.avoid_recent.papers}" oninput="onCfg()">
+            <span style="font-size:12px;color:var(--text-3)">套</span>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="rMust" ${cfg.rules.must.enabled?'checked':''} onchange="onCfg()">
+            <div class="t">必考锁定<span>指定题目固定进卷，占用对应题型题量</span></div>
+            <span style="font-size:12px;color:var(--text-2)" id="mustCount">已选 ${(cfg.rules.must.ids||[]).length} 题</span>
+            <button onclick="openMustPicker()" style="padding:4px 10px;font-size:12.5px">选择题目</button>
+          </div>
+          <div class="rule">
+            <input type="checkbox" id="rScope" ${cfg.rules.scope.enabled?'checked':''} onchange="onCfg()">
+            <div class="t">标签与批次范围<span>只抽含指定标签的题，可要求新题占比</span></div>
+            <input type="text" id="rTags" value="${esc(cfg.rules.scope.tags||'')}" placeholder="如 UPS,应急" style="width:150px" oninput="onCfg()">
+          </div>
+          <div class="rule" style="padding-left:26px">
+            <div class="t"><span>新题天数与占比（0 表示不限制）</span></div>
+            <input type="number" min="0" id="rNewDays" value="${cfg.rules.scope.new_days||0}" oninput="onCfg()">
+            <span style="font-size:12px;color:var(--text-3)">天内 /</span>
+            <input type="number" min="0" max="100" id="rNewRatio" value="${cfg.rules.scope.new_ratio||0}" oninput="onCfg()">
+            <span style="font-size:12px;color:var(--text-3)">% 以上</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="paper-side">
+      <div class="card" id="preBox"><div class="card-b"><div class="empty">预检中…</div></div></div>
+      <button class="primary" id="btnBuild" style="padding:11px;font-size:14px" onclick="doBuild()">生成试卷</button>
+      <div class="hint" style="text-align:center">生成后自动编号并保存快照</div>
+    </div>
+  </div>
+  <div id="mustModal"></div>`;
+}
+
+async function doBuild(){
+  const btn = document.getElementById('btnBuild');
+  if(btn){ btn.disabled = true; btn.textContent = '生成中…'; }
+  const r = await API.post('/api/papers', readCfg());
+  if(btn){ btn.disabled = false; btn.textContent = '生成试卷'; }
+  if(!r.ok){ toast((r.errors||['生成失败']).join('；'), true); return; }
+  toast('已生成 ' + r.no + '，共 ' + r.q_count + ' 题');
+  go('paper-detail?id=' + r.id);
+}
+
+let PICK = {items:[], sel:new Set()};
+async function openMustPicker(){
+  const res = await API.get('/api/questions?size=200&page=1');
+  PICK.items = res.items || [];
+  PICK.sel = new Set((PCFG.rules.must.ids||[]).map(Number));
+  document.getElementById('mustModal').innerHTML = `
+    <div class="modal-mask" onclick="if(event.target===this)closeMustPicker()">
+      <div class="modal">
+        <div class="modal-h"><b>选择必考题目</b><span style="font-size:12px;color:var(--text-3)">已选 <b id="pkCount">0</b> 题</span></div>
+        <div style="padding:10px 14px;border-bottom:1px solid var(--line)">
+          <input id="pkKw" placeholder="搜索题干" oninput="renderPicker()">
+        </div>
+        <div class="modal-b" id="pkList"></div>
+        <div class="modal-f">
+          <button onclick="closeMustPicker()">取消</button>
+          <button class="primary" onclick="confirmMust()">确定</button>
+        </div>
+      </div>
+    </div>`;
+  renderPicker();
+}
+function renderPicker(){
+  const kwEl = document.getElementById('pkKw');
+  const kw = kwEl ? kwEl.value : '';
+  const list = PICK.items.filter(q=> !kw || (q.stem||'').indexOf(kw) >= 0);
+  const box = document.getElementById('pkList');
+  if(!box) return;
+  box.innerHTML = list.length ? list.map(q=>`
+    <label class="pk-row">
+      <input type="checkbox" ${PICK.sel.has(q.id)?'checked':''} onchange="togglePick(${q.id}, this.checked)">
+      <span class="tag t-${q.qtype}">${q.type_name.replace('单项选择题','单选').replace('多项选择题','多选').replace('判断题','判断').replace('填空题','填空').replace('问答题','问答')}</span>
+      <span class="d-${q.diff}" style="font-size:12px;width:26px">${q.diff_name}</span>
+      <span class="pk-stem">${esc(q.stem).slice(0,72)}</span>
+    </label>`).join('') : '<div class="empty">没有匹配的题目</div>';
+  const c = document.getElementById('pkCount');
+  if(c) c.textContent = PICK.sel.size;
+}
+function togglePick(id, on){
+  if(on) PICK.sel.add(id); else PICK.sel.delete(id);
+  const c = document.getElementById('pkCount');
+  if(c) c.textContent = PICK.sel.size;
+}
+function closeMustPicker(){ document.getElementById('mustModal').innerHTML = ''; }
+function confirmMust(){
+  PCFG.rules.must.ids = Array.from(PICK.sel);
+  PCFG.rules.must.enabled = PICK.sel.size > 0 ? true : PCFG.rules.must.enabled;
+  closeMustPicker();
+  route();
+}
+
+// ---------------------------------------------------------------- 试卷库
+let PAPERS = {page:1, kw:'', total:0};
+
+async function viewPapers(){
+  const res = await API.get('/api/papers?page='+PAPERS.page+'&size=20&kw='+encodeURIComponent(PAPERS.kw));
+  PAPERS.total = res.total;
+  const rows = res.items.map(p=>`<tr>
+    <td><a href="#paper-detail?id=${p.id}"><b>${esc(p.no)}</b></a></td>
+    <td>${esc(p.title)}</td>
+    <td class="num">${p.q_count}</td>
+    <td class="num">${p.total_score}</td>
+    <td class="num">${p.diff_score}</td>
+    <td class="num">${p.duration} 分钟</td>
+    <td style="font-size:12px;color:var(--text-3);white-space:nowrap">${p.created_at}</td>
+    <td style="white-space:nowrap">
+      <a href="#paper-detail?id=${p.id}"><button style="padding:3px 9px;font-size:12.5px">查看</button></a>
+      <button class="danger" style="padding:3px 9px;font-size:12.5px" onclick="delPaper(${p.id})">删除</button>
+    </td>
+  </tr>`).join('');
+  const pages = Math.max(1, Math.ceil(PAPERS.total / 20));
+  return `<div class="page-head">
+    <div><h1>试卷库</h1><p>共 ${PAPERS.total} 套试卷，题库改动不影响已生成的卷子</p></div>
+    <div class="actions"><button class="primary" onclick="go('paper')">去组卷</button></div>
+  </div>
+  <div class="filters">
+    <input id="pkKw2" class="grow" placeholder="搜索编号或标题" value="${esc(PAPERS.kw)}"
+      onkeydown="if(event.key==='Enter'){PAPERS.kw=this.value;PAPERS.page=1;route();}">
+    <button onclick="PAPERS.kw=document.getElementById('pkKw2').value;PAPERS.page=1;route()">搜索</button>
+  </div>
+  <div class="card">
+    ${rows ? `<table><thead><tr><th>试卷编号</th><th>标题</th><th>题量</th><th>总分</th><th>难度积分</th><th>时长</th><th>生成时间</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table>`
+      : '<div class="empty">还没有试卷，去「自动组卷」生成第一套</div>'}
+    <div class="pager"><span>第 ${PAPERS.page} / ${pages} 页</span>
+      <span class="btns">
+        <button ${PAPERS.page<=1?'disabled':''} onclick="PAPERS.page--;route()">上一页</button>
+        <button ${PAPERS.page>=pages?'disabled':''} onclick="PAPERS.page++;route()">下一页</button>
+      </span>
+    </div>
+  </div>`;
+}
+
+async function delPaper(id){
+  if(!confirm('删除这份试卷？题库中的题目不受影响。')) return;
+  await API.del('/api/papers/'+id);
+  toast('已删除');
+  route();
+}
+
+// ---------------------------------------------------------------- 试卷详情
+function renderSheet(p){
+  const cn = ['一','二','三','四','五','六'];
+  let idx = 0;
+  const secs = p.sections.map(s=>{
+    const letter = cn[idx++] || '';
+    const items = s.items.map(it=>{
+      const ptText = it.qtype==='fill'
+        ? '共 '+it.blanks+' 空，每空 '+(it.score/Math.max(1,it.blanks)).toFixed(1).replace('.0','')+' 分'
+        : it.score+' 分';
+      let body = `<div class="q">
+        <div class="stem" style="display:flex;gap:5px;align-items:baseline">
+          <span class="no" style="flex:0 0 auto">${it.no_in_type}.</span>
+          <span style="flex:1;min-width:0;white-space:pre-wrap">${esc(it.stem)}</span>
+          <span class="pts" style="flex:0 0 auto">（${ptText}）</span>
+        </div>`;
+      if(it.qtype==='single' || it.qtype==='multi'){
+        body += `<div class="opts">${it.options.map(o=>`<span>${o.key}. ${esc(o.text)}</span>`).join('')}</div>`;
+      } else if(it.qtype==='qa'){
+        body += `<div class="blank-space"></div>`;
+      }
+      return body + '</div>';
+    }).join('');
+    return `<div class="sec">${letter}、${s.name}（共 ${s.count} 题，共 ${s.subtotal} 分）</div>${items}`;
+  }).join('');
+  return `<div class="a4">
+    <div class="exam-head">
+      <div class="unit">${esc(p.unit||'')}</div>
+      <h2>${esc(p.title)}</h2>
+      <div class="exam-meta"><span>试卷编号：${esc(p.no)}</span><span>生成时间：${p.created_at}</span></div>
+    </div>
+    <div class="cand"><span>姓名：<u></u></span><span>工号：<u></u></span><span>部门：<u></u></span><span>得分：<u></u></span></div>
+    <div class="seal">密 封 线 内 不 要 答 题</div>
+    <div style="font-size:9pt;display:flex;justify-content:space-between">
+      <span>考试时长：${p.duration} 分钟</span><span>满分：${p.total_score} 分</span><span>题量：${p.q_count} 题</span>
+    </div>
+    ${secs}
+    <div class="foot">${esc(p.unit||'')}　试卷编号 ${esc(p.no)}</div>
+  </div>`;
+}
+
+function renderAnswer(p){
+  const cn = ['一','二','三','四','五','六'];
+  let idx = 0;
+  const secs = p.sections.map(s=>{
+    const letter = cn[idx++] || '';
+    const items = s.items.map(it=>{
+      let ans;
+      if(it.qtype === 'fill'){
+        const list = it.answer_list && it.answer_list.length ? it.answer_list : [it.answer];
+        ans = list.map((a,i)=>'第 '+(i+1)+' 空：'+a).join('　　');
+      } else if(it.qtype === 'qa'){
+        ans = it.answer;
+      } else if(it.qtype === 'judge'){
+        ans = it.answer;
+      } else {
+        ans = it.answer;
+      }
+      return `<div class="answer-item">
+        <div><span class="n">${it.no_in_type}.</span><span class="a" style="white-space:pre-wrap">${esc(ans)}</span>
+          <span style="font-size:8.8pt;color:#666">（${it.score} 分）</span></div>
+        ${it.analysis ? `<div class="an">解析：${esc(it.analysis)}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="sec">${letter}、${s.name}</div>${items}`;
+  }).join('');
+  return `<div class="a4">
+    <div class="exam-head">
+      <div class="unit">${esc(p.unit||'')}</div>
+      <h2>${esc(p.title)}　标准答案</h2>
+      <div class="exam-meta"><span>试卷编号：${esc(p.no)}</span><span>生成时间：${p.created_at}</span></div>
+    </div>
+    <div style="font-size:9pt;margin:8px 0 4px;display:flex;gap:24px">
+      <span>满分：${p.total_score} 分</span><span>题量：${p.q_count} 题</span><span>难度积分：${p.diff_score}</span>
+    </div>
+    <div class="seal">答 案 卷 · 阅 卷 参 考</div>
+    ${secs}
+  </div>`;
+}
+
+async function viewPaperDetail(params){
+  const id = Number(params.id || 0);
+  const r = await API.get('/api/papers/'+id);
+  if(!r.ok) return `<div class="page-head"><div><h1>试卷不存在</h1></div></div>
+    <div class="card"><div class="empty">该试卷可能已被删除</div></div>`;
+  const p = r.paper;
+  window.CURP = p;
+  return `<div class="page-head">
+    <div><h1>${esc(p.no)}</h1>
+      <p>${esc(p.title)}　${p.q_count} 题 / ${p.total_score} 分 / 难度积分 ${p.diff_score} / ${p.duration} 分钟　生成于 ${p.created_at}</p></div>
+    <div class="actions no-print">
+      <div class="tabs">
+        <button class="on" onclick="switchSheet(0)">试卷</button>
+        <button onclick="switchSheet(1)">标准答案</button>
+      </div>
+      <button onclick="window.print()">打印 / 另存 PDF</button>
+      <button onclick="doBalance(${p.id})">一键配平 100 分</button>
+      <a href="#papers"><button class="ghost">返回</button></a>
+    </div>
+  </div>
+  ${paperParamCard(p)}
+  ${quotaDevCard(p)}
+  <div class="paper-frame">
+    <div id="sheetWrap">${renderSheet(p)}</div>
+    <div id="ansWrap" class="hide">${renderAnswer(p)}</div>
+  </div>`;
+}
+
+/** 配额执行情况（FR-AG-20）：配置 / 实际 / 偏差，|偏差| > 1 的行标出来。
+ *
+ * 差 1 题属于"最大余数法取整"的正常波动，不标；差 2 题以上才是真没按配置抽。
+ * 正偏差带 + 号：不写的话 "2" 与 "-2" 只差一横，扫一眼容易读反。
+ */
+function quotaDevHtml(quota, actual){
+  const q = quota || {}, a = actual || {};
+  const keys = Object.keys(q).sort((x, y)=>Number(x) - Number(y));
+  if(!keys.length) return '';
+  const rows = keys.map(k=>{
+    const want = Number(q[k]) || 0;
+    const got = Number(a[k]) || 0;
+    const dev = got - want;
+    const off = Math.abs(dev) > 1;
+    const cat = (STATE.cats || []).find(x=>String(x.id) === String(k));
+    const name = cat ? cat.name : ('分类 ' + k);
+    return `<tr class="${off?'off':''}"><td>${esc(name)}</td>`
+      + `<td class="num">${want}</td><td class="num">${got}</td>`
+      + `<td class="num${off?' bad':''}">${dev > 0 ? '+' : ''}${dev}</td></tr>`;
+  }).join('');
+  return `<table class="dev-table"><thead><tr><th>分类</th><th>配置</th><th>实际</th><th>偏差</th></tr></thead>`
+    + `<tbody>${rows}</tbody></table>`;
+}
+
+function quotaDevCard(p){
+  const c = p.config || {};
+  if(!c.cat_quota || !Object.keys(c.cat_quota).length) return '';
+  return `<div class="card no-print" style="margin-bottom:14px">
+    <div class="card-h"><b>配额执行</b><span class="hint">配置多少、实际抽到多少，偏差超过 ±1 题的行已标出</span></div>
+    <div class="card-b">${quotaDevHtml(c.cat_quota, c.cat_actual)}</div>
+  </div>`;
+}
+
+/** 试卷详情里的组卷参数（FR-PL-04）：出过一次就固定，便于复现 */
+function paperParamCard(p){
+  const c = p.config || {};
+  const modeName = {auto:'系统自动', quota:'按分类配额', custom:'自定义组合'}[c.mode] || c.mode || '—';
+  let diffText = '—';
+  if(c.diff_mode === 'ratio'){
+    const r = c.diff_ratio || {};
+    diffText = `按占比 易 ${r.easy||0}% / 中 ${r.mid||0}% / 难 ${r.hard||0}%`;
+  }else if(c.diff_target !== undefined && c.diff_target !== null){
+    diffText = `${c.diff_target} 分` + (c.diff_target_auto ? '（系统按中等偏易推荐）' : '');
+  }
+  const rows = (c.rows || []).filter(r=>r.enabled && r.count>0)
+    .map(r=>`${(TYPENAME[r.qtype]||r.qtype)} ${r.count}×${r.score}分`).join('　');
+  return `<div class="card no-print" style="margin-bottom:14px">
+    <div class="card-h"><b>组卷参数</b><span class="hint">据此可复现同一次组卷</span></div>
+    <div class="card-b" style="font-size:12.8px;line-height:2">
+      <div>组卷方式：<b>${esc(modeName)}</b>　考试时长：<b>${p.duration}</b> 分钟　
+        难度：${esc(diffText)}　随机种子：<b>${p.seed}</b></div>
+      ${rows?`<div style="color:var(--text-2)">题型题量：${esc(rows)}</div>`:''}
+      <div style="color:var(--text-3)">生成时间：${esc(p.created_at)}　卷面总分：${p.total_score} 分</div>
+    </div>
+  </div>`;
+}
+
+function switchSheet(i){
+  document.getElementById('sheetWrap').classList.toggle('hide', i === 1);
+  document.getElementById('ansWrap').classList.toggle('hide', i === 0);
+  document.querySelectorAll('.tabs button').forEach((b, idx)=>b.classList.toggle('on', idx === i));
+}
+
+async function doBalance(pid){
+  const r = await API.post('/api/papers/'+pid+'/balance', {target:100});
+  if(!r.ok){ toast('无法配平：还差 ' + r.left + ' 分（单题不低于 1 分）', true); return; }
+  toast('已配平到 100 分，调整 ' + r.changes.length + ' 题');
+  route();
+}
+
+// ---------------------------------------------------------------- 批量导入
+let IMP = {items:[], sel:new Set(), warnings:[], failed:[], filename:'', busy:false, by:''};
+
+/** 识别方式：auto 先本地、拆不出来才动 AI；ai 全交给模型；local 一次请求都不发 */
+let IMP_ENGINE = (function(){
+  try{ return localStorage.getItem('zjlab_imp_engine') || 'auto'; }catch(e){ return 'auto'; }
+})();
+
+const ENGINE_NAME = {auto:'自动（先本地规则，拆不出来再用 AI）',
+                     ai:'只用 AI 识别', local:'只用本地规则（不联网）'};
+
+function setEngine(v){
+  IMP_ENGINE = (v === 'ai' || v === 'local') ? v : 'auto';
+  try{ localStorage.setItem('zjlab_imp_engine', IMP_ENGINE); }catch(e){}
+  route();
+}
+
+function aiReady(){ return !!(STATE.ai && STATE.ai.ready); }
+
+/** 当前用谁看图：单独配了视觉模型用它，没配就是文本模型兜底。
+ *  这里必须把名字说出来——不然"图片识别失败"时用户不知道该换谁。 */
+function visionName(){
+  const ai = STATE.ai || {};
+  return ai.vision_model ? ai.vision_model : (ai.model || '') + '（未单独配视觉模型）';
+}
+
+function engineTip(){
+  if(IMP_ENGINE === 'local'){
+    return '不会发出任何网络请求。版式规整的 txt / docx / xlsx / 文字版 PDF 都能拆；'
+         + '图片和扫描件读不出来。';
+  }
+  if(!aiReady()){
+    return 'AI 还没配置，现在只能用本地规则。<a href="javascript:;" onclick="go(\'settings\')">去系统设置填接口地址和密钥</a>，'
+         + '之后图片、扫描件、版式乱的卷子都能交给它识别。';
+  }
+  if(IMP_ENGINE === 'ai'){
+    return '整份材料交给 AI 识别（模型：' + esc(STATE.ai.model || '未填') + '），版式再乱也能拆，速度取决于接口，按字数计费。<br>'
+         + '图片 / 扫描件逐页送 ' + esc(visionName()) + ' 看图，一页约两三分钟——它不支持看图的话，'
+         + '到<a href="javascript:;" onclick="go(\'settings\')">系统设置</a>单独填「视觉模型」。';
+  }
+  return '先用本地规则拆；拆不出来才调 AI（模型：' + esc(STATE.ai.model || '未填')
+       + '），规整的文件不花 token。';
+}
+
+function viewImport(){
+  const has = IMP.items.length > 0;
+  const total = IMP.items.length;
+  const selCount = IMP.sel.size;
+  return `<div class="page-head">
+    <div><h1>批量导入</h1><p>doc / xls / docx / xlsx / pdf / txt / csv / png / jpg 都能导；格式不规整的交给 AI 识别</p></div>
+    <div class="actions">${has?`<button onclick="clearImport()">重新选择文件</button>`:''}</div>
+  </div>
+  <div class="card">
+    <div class="card-b">
+      <div class="drop" id="dropZone" onclick="document.getElementById('fileInput').click()"
+           ondragover="event.preventDefault();this.classList.add('on')"
+           ondragleave="this.classList.remove('on')"
+           ondrop="onDrop(event)">
+        <b>拖入题库文件，或点击选择</b>
+        <span>doc / xls / docx / xlsx / pdf / txt / csv / png / jpg，单文件不超过 20MB；自动识别题型、选项、答案</span>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.docx,.doc,.pdf,.txt,.csv,.png,.jpg,.jpeg,.webp" style="display:none" onchange="onFilePick(this)">
+      <div style="margin-top:14px">
+        <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:6px">识别方式</label>
+        <div class="seg" id="impEngineBox">
+          ${['auto','ai','local'].map(k=>`<button type="button" class="${IMP_ENGINE===k?'on':''}" onclick="setEngine('${k}')">${ENGINE_NAME[k].split('（')[0]}</button>`).join('')}
+        </div>
+        <div class="hint" style="margin-top:8px" id="impEngineTip">${engineTip()}</div>
+      </div>
+      <div class="hint" style="margin-top:10px">
+        识别规则：按「一、单项选择题」识别题型，按「1. 题干 / A. 选项 / 答案：X」识别题目；
+        难度可用【易】【中】【难】标记，默认按中等处理；题干中出现电气/暖通/弱电/消防/管理会自动归类。
+        <a href="javascript:;" onclick="importDemo()" style="margin-left:6px">载入示例看看效果</a>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        表格文件（xlsx / csv）若第一行是表头，会按列名取数，列的顺序可以随便排，多余的列会被忽略。
+        <a href="/api/import/template" download="机房运维题库导入模板.xlsx" style="margin-left:6px">下载 Excel 模板</a>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-h"><b>最近导入</b><span class="hint">每次确认入库都会留一条记录</span></div>
+    <div class="card-b" id="impLogs"><span class="hint">正在加载…</span></div>
+  </div>
+  <div id="impStage" style="margin-top:14px">${has ? renderImportResult() : ''}</div>`;
+}
+
+async function loadImportLogs(){
+  const box = document.getElementById('impLogs');
+  if(!box) return;
+  let r;
+  try{ r = await API.get('/api/import/logs?limit=6'); }
+  catch(e){ box.innerHTML = '<span class="hint">导入记录读取失败</span>'; return; }
+  const logs = (r && r.logs) || [];
+  if(!box.isConnected) return;
+  if(!logs.length){ box.innerHTML = '<span class="hint">暂无导入记录</span>'; return; }
+  box.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12.8px">
+    ${logs.map(l=>`<tr>
+      <td style="padding:5px 0;color:var(--text-3);white-space:nowrap;width:150px">${esc(l.created_at)}</td>
+      <td style="padding:5px 8px">${esc(l.filename)}</td>
+      <td style="padding:5px 0;text-align:right;white-space:nowrap;color:var(--text-2)">
+        共 ${l.total} 题，成功 ${l.imported}，失败 ${l.failed}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function impMissing(q){
+  // 只有题干缺了必须拦；答案缺了可以入成"草稿"（老题库常常没有答案列）
+  return {
+    stem: !String(q.stem || '').trim(),
+    answer: !String(q.answer || '').trim(),
+  };
+}
+function impBadCount(){
+  // 只算"缺题干"：那才是拦住入库的。缺答案的能入成草稿，单独报一句更准确。
+  return IMP.items.filter(q=>impMissing(q).stem).length;
+}
+function impNoAnsCount(){
+  return IMP.items.filter(q=>{ const m = impMissing(q); return !m.stem && m.answer; }).length;
+}
+
+/** 说明这批结果是怎么来的：AI 认的要多核一遍，本地规则认的通常可以直接入库 */
+function impByNote(){
+  const by = String(IMP.by || '');
+  if(!by) return '';
+  let text = '', bg = '#f5f7fb', color = 'var(--text-2)';
+  if(by.indexOf('ai-vision') >= 0){
+    text = '这批题是 AI 看图识别出来的，手写、盖章、拍照倾斜都可能认错字，入库前请逐条看一眼题干和答案。';
+    bg = '#fff8e6'; color = '#7a5b12';
+  }else if(by.indexOf('ai') >= 0){
+    text = '这批题是 AI 识别出来的（材料版式不规整，本地规则没拆出来）。建议重点核对题干与答案。';
+    bg = '#fff8e6'; color = '#7a5b12';
+    if(by.indexOf('local') >= 0) text = '部分块由 AI 识别、部分块按本地规则拆出，建议核对 AI 那部分。';
+  }else{
+    text = '这批题是按本地规则拆出来的（未联网，未产生费用）。';
+  }
+  if((IMP.chunks || 1) > 1) text += ' 材料较长，分 ' + IMP.chunks + ' 块处理。';
+  return `<div style="padding:9px 16px;background:${bg};border-bottom:1px solid var(--line-soft,#e8eaf0);
+    font-size:12.3px;color:${color};line-height:1.7">${esc(text)}</div>`;
+}
+
+function renderImportResult(){
+  const cats = STATE.cats;
+  const rows = IMP.items.map((q,i)=>{
+    const cat = cats.find(c=>c.id===q.cat_id) || cats[0];
+    const subs = (cat && cat.subs) || [];
+    const miss = impMissing(q);
+    const cls = [miss.stem ? 'warn-stem' : '', miss.answer ? 'warn-ans' : '',
+                 q.dup ? 'dup-row' : ''].filter(Boolean).join(' ');
+    const dupTag = q.dup
+      ? `<span class="dup-tag" title="题库已有：${esc(q.dup_stem || '')}（相似度 ${Math.round((q.dup_score||0)*100)}%）">疑重复</span>`
+      : '';
+    return `<tr data-row="${i}" class="${cls}">
+      <td class="c-chk"><input type="checkbox" style="width:15px;height:15px" ${IMP.sel.has(i)?'checked':''} onchange="impSel(${i},this.checked)"></td>
+      <td class="c-type"><select onchange="impSet(${i},'qtype',this.value)">
+        ${STATE.types.map(t=>`<option value="${t.key}" ${q.qtype===t.key?'selected':''}>${t.name.replace('项选择','选').replace('判断题','判断').replace('填空题','填空').replace('问答题','问答')}</option>`).join('')}
+      </select></td>
+      <td><div class="stem-cell">${dupTag}<input class="stem-in" value="${esc(q.stem)}" onchange="impSet(${i},'stem',this.value)"></div></td>
+      <td class="c-opt" style="text-align:center;color:var(--text-3)">${q.options.length || '-'}</td>
+      <td class="c-ans"><input value="${esc(q.answer)}" ${miss.answer?'placeholder="缺答案"':''} onchange="impSet(${i},'answer',this.value)"></td>
+      <td class="c-diff"><select onchange="impSet(${i},'diff',this.value)">
+        ${STATE.diffs.map(d=>`<option value="${d.key}" ${q.diff===d.key?'selected':''}>${d.name}</option>`).join('')}
+      </select></td>
+      <td class="c-cat"><select onchange="impSetCat(${i},Number(this.value))">
+        ${cats.map(c=>`<option value="${c.id}" ${cat&&cat.id===c.id?'selected':''}>${c.name}</option>`).join('')}
+      </select></td>
+      <td class="c-sub"><select onchange="impSet(${i},'sub_id',Number(this.value))">
+        ${subs.length?subs.map(s=>`<option value="${s.id}" ${q.sub_id===s.id?'selected':''}>${esc(s.name)}</option>`).join(''):'<option value="">—</option>'}
+      </select></td>
+      <td class="c-del"><button class="del-btn" title="移除这一题" onclick="impDel(${i})">×</button></td>
+    </tr>`;
+  }).join('');
+  const bad = impBadCount();
+  const noAns = impNoAnsCount();
+  const dupN = IMP.items.filter(q=>q.dup).length;
+  return `<div class="card">
+    <div class="card-h">
+      <b>识别结果 <span id="impCount" style="font-weight:400;color:var(--text-2);font-size:12.5px">共 ${IMP.items.length} 题，已选 ${IMP.sel.size} 题${bad?`，<span style="color:#b45309">${bad} 题缺题干</span>`:''}${noAns?`，<span style="color:#b42318">${noAns} 题缺答案（可先入库再补）</span>`:''}</span>${dupN?`<span id="impDupNote" class="dup-note">${dupN} 题与题库疑似重复，默认未勾选</span>`:''}</b>
+      <div class="actions">
+        <button onclick="impAll(true)">全选</button>
+        <button onclick="impAll(false)">全不选</button>
+        <button onclick="impBulkCat()">批量设置分类</button>
+        <button class="primary" onclick="commitImport()">确认入库（${IMP.sel.size}）</button>
+      </div>
+    </div>
+    ${impByNote()}
+    ${(IMP.failedChunks && IMP.failedChunks.length) ? `<div style="padding:10px 16px;background:#fdf3f3;border-bottom:1px solid #f0c2c2;font-size:12.3px;color:#991b1b;line-height:1.7">
+      第 ${IMP.failedChunks.join('、')} 块没能识别出来（接口报错或超时），这几块的内容需要单独重导。
+    </div>` : ''}
+    ${IMP.warnings.length ? `<div style="padding:10px 16px;background:#fff8e6;border-bottom:1px solid #f3e0b0;font-size:12.3px;color:#7a5b12;line-height:1.7">
+      ${IMP.warnings.slice(0,6).map(w=>'· '+esc(w)).join('<br>')}${IMP.warnings.length>6?`<br>· 另有 ${IMP.warnings.length-6} 条提示`:''}
+    </div>` : ''}
+    ${(IMP.failed && IMP.failed.length) ? `<div style="padding:10px 16px;background:#fdf3f3;border-bottom:1px solid #f0c2c2;font-size:12.3px;color:#991b1b;line-height:1.7">
+      <b>${IMP.failed.length} 题未入库</b>（改完再点一次确认入库）<br>
+      ${IMP.failed.slice(0,8).map(f=>'· '+esc(f.stem)+' —— '+esc((f.errors||[]).join('、'))).join('<br>')}
+      ${IMP.failed.length>8?`<br>· 另有 ${IMP.failed.length-8} 条`:''}
+    </div>` : ''}
+    <div class="imp-table" style="overflow:auto;max-height:62vh">
+      <table><thead><tr>
+        <th class="c-chk"></th><th class="c-type">题型</th><th>题干</th><th class="c-opt">选项</th>
+        <th class="c-ans">答案</th><th class="c-diff">难度</th>
+        <th class="c-cat">分类</th><th class="c-sub">二级分类</th><th class="c-del">删除</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+    </div>
+  </div>`;
+}
+
+function rerenderImport(){  const stage = document.getElementById('impStage');
+  if(stage) stage.innerHTML = renderImportResult();
+}
+function impSel(i, on){ if(on) IMP.sel.add(i); else IMP.sel.delete(i); rerenderImport(); }
+function impAll(on){
+  IMP.sel = on ? new Set(IMP.items.map((_,i)=>i)) : new Set();
+  rerenderImport();
+}
+function impSet(i, field, v){
+  IMP.items[i][field] = v;
+  impMarkRow(i);
+}
+function impSetCat(i, catId){
+  const c = STATE.cats.find(x=>x.id===catId);
+  IMP.items[i].cat_id = catId;
+  IMP.items[i].sub_id = (c && c.subs && c.subs.length) ? c.subs[0].id : null;
+  rerenderImport();
+}
+/** 把界面上"看起来已经选了"的默认值真正写回数据。
+ *  否则下拉显示电气、提交时 cat_id 还是空，后端报"未选择一级分类"——
+ *  用户看到的是一个样、存进去的是另一个样。 */
+function impNormalize(){
+  IMP.items.forEach(q=>{
+    const c = STATE.cats.find(x=>x.id===q.cat_id) || STATE.cats[0];
+    if(!c) return;
+    q.cat_id = c.id;
+    const subs = c.subs || [];
+    if(!subs.some(s=>s.id===q.sub_id)) q.sub_id = subs.length ? subs[0].id : null;
+  });
+}
+/** 就地更新某一行的"缺项"状态：不整表重渲染，否则正在输入的焦点会丢 */
+function impMarkRow(i){
+  const tr = document.querySelector('.imp-table tr[data-row="' + i + '"]');
+  const q = IMP.items[i];
+  if(tr && q){
+    const miss = impMissing(q);
+    tr.classList.toggle('warn-stem', miss.stem);
+    tr.classList.toggle('warn-ans', miss.answer);
+    const ans = tr.querySelector('.c-ans input');
+    if(ans) ans.setAttribute('placeholder', miss.answer ? '缺答案' : '');
+  }
+  impUpdateCount();
+}
+function impUpdateCount(){
+  const el = document.getElementById('impCount');
+  if(!el) return;
+  const bad = impBadCount();
+  const noAns = impNoAnsCount();
+  el.innerHTML = '共 ' + IMP.items.length + ' 题，已选 ' + IMP.sel.size + ' 题' +
+    (bad ? '，<span style="color:#b45309">' + bad + ' 题缺题干</span>' : '') +
+    (noAns ? '，<span style="color:#b42318">' + noAns + ' 题缺答案（可先入库再补）</span>' : '');
+}
+/** 整行删除：题号是下标，删掉一行后其余勾选状态必须跟着左移 */
+function impDel(i){
+  if(!(i >= 0 && i < IMP.items.length)) return;
+  IMP.items.splice(i, 1);
+  const sel = new Set();
+  IMP.sel.forEach(k=>{ if(k < i) sel.add(k); else if(k > i) sel.add(k - 1); });
+  IMP.sel = sel;
+  if(!IMP.items.length){
+    IMP = {items:[], sel:new Set(), warnings:[], failed:[], filename:''};
+    route();
+    toast('已移除最后一题');
+    return;
+  }
+  rerenderImport();
+  toast('已移除 1 题，剩 ' + IMP.items.length + ' 题');
+}
+function impBulkCat(){
+  const names = STATE.cats.map(c=>c.name).join(' / ');
+  const v = prompt('把已勾选的题全部设为哪个分类？（' + names + '）', STATE.cats[0].name);
+  if(!v) return;
+  const cat = STATE.cats.find(c=>c.name === v.trim());
+  if(!cat){ toast('没有这个分类：' + v, true); return; }
+  IMP.sel.forEach(i=>{ IMP.items[i].cat_id = cat.id; });
+  rerenderImport();
+  toast('已设置 ' + IMP.sel.size + ' 题为「' + cat.name + '」');
+}
+function clearImport(){
+  IMP = {items:[], sel:new Set(), warnings:[], failed:[], filename:''};
+  route();
+}
+
+async function onDrop(e){
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('on');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) await parseImportFile(f);
+}
+async function onFilePick(input){
+  const f = input.files && input.files[0];
+  input.value = '';
+  if(f) await parseImportFile(f);
+}
+const DEMO_TEXT = `一、单项选择题
+1. 机房精密空调的加湿用水应使用（　）。
+A. 自来水
+B. 软化水
+C. 海水
+D. 中水
+答案：B
+解析：自来水硬度高，易在加湿罐结垢。
+
+2. 【难】UPS 电池组的后备时间取决于（　）。
+A. 负载大小
+B. 机房面积
+C. 维护周期
+D. 室温
+答案：A
+
+二、多项选择题
+3. 机房消防系统包括（　）。
+A. 气体灭火
+B. 火灾报警
+C. 门禁
+D. 灭火器材
+答案：ABD
+
+三、判断题
+4. 精密空调可以频繁启停。
+答案：错误
+
+四、填空题
+5. 机房温度应控制在 18~____ ℃，湿度 40%~____。
+答案：27|60
+
+五、问答题
+6. 简述市电中断后的应急处置流程。
+答案：确认告警→启动柴油发电机→切换负荷→持续监控`;
+
+function toB64(str){
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  bytes.forEach(b=>{ bin += String.fromCharCode(b); });
+  return btoa(bin);
+}
+function importDemo(){ parseB64('示例题库.txt', toB64(DEMO_TEXT)); }
+
+async function parseImportFile(f){
+  const stage = document.getElementById('impStage');
+  if(stage) stage.innerHTML = '<div class="card"><div class="empty">正在解析 ' + esc(f.name) + ' …</div></div>';
+  const b64 = await new Promise((res, rej)=>{
+    const r = new FileReader();
+    r.onload = ()=> res(String(r.result || '').split(',')[1] || '');
+    r.onerror = rej;
+    r.readAsDataURL(f);
+  });
+  await parseB64(f.name, b64);
+}
+
+/** 图片与扫描件只能靠模型，接口可能要跑几十秒，进度得写清楚，别让人以为卡死 */
+function parsingText(filename){
+  const ext = (filename.split('.').pop() || '').toLowerCase();
+  const isImage = ['png','jpg','jpeg','webp'].indexOf(ext) >= 0;
+  if(IMP_ENGINE === 'local') return '正在用本地规则解析 ' + filename + ' …';
+  if(isImage) return '正在让 AI 看图识别 ' + filename + ' …图片较慢，请稍候';
+  if(IMP_ENGINE === 'ai') return '正在让 AI 识别 ' + filename + ' …材料长的话要等一会儿';
+  return '正在解析 ' + filename + ' …';
+}
+
+/** 解析中显示的文案：拿到页码就报页码，否则沿用原来那句 */
+function progressText(filename, p){
+  if(p && p.stage && p.stage.indexOf('AI') >= 0)
+    return '正在' + p.stage + '（' + filename + '）…图片型试卷每页要几分钟，请勿关闭此页面';
+  if(p && p.stage) return '正在' + p.stage + '（' + filename + '）…';
+  return parsingText(filename);
+}
+
+async function parseB64(filename, b64){
+  const stage = document.getElementById('impStage');
+  const job = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  if(stage) stage.innerHTML = '<div class="card"><div class="empty">' + esc(parsingText(filename)) + '</div></div>';
+  const paint = (txt)=>{
+    const el = stage && stage.querySelector('.empty');
+    if(el) el.textContent = txt;
+  };
+  // 解析请求是阻塞的，模型一页可能跑几分钟：靠轮询把"在干第几页"显示出来，
+  // 否则用户看到的就是一个不动的圈，只会去点关闭。
+  const timer = setInterval(async ()=>{
+    try{
+      const p = await API.get('/api/import/progress?job=' + encodeURIComponent(job));
+      if(p && p.state === 'running') paint(progressText(filename, p));
+    }catch(e){ /* 进度查不到不影响主流程 */ }
+  }, 1500);
+  let r;
+  try{
+    r = await API.post('/api/import/parse',
+                       {filename:filename, content:b64, engine:IMP_ENGINE, job:job});
+  }catch(e){
+    toast('解析失败：' + e.message, true);
+    route();
+    return;
+  }finally{
+    clearInterval(timer);
+  }
+  if(!r.ok){
+    if(stage) stage.innerHTML = `<div class="card"><div class="empty">${esc(r.error)}</div></div>`;
+    toast(r.error, true);
+    return;
+  }
+  IMP = {items:r.items, warnings:r.warnings || [], filename:filename,
+         sel:impDefaultSel(r.items), failed:[], by:r.by || '',
+         chunks:r.chunks || 1, failedChunks:r.failed_chunks || []};
+  impNormalize();
+  route();
+  const dupN = r.items.filter(q=>q.dup).length;
+  toast('识别到 ' + r.items.length + ' 题' +
+        (dupN ? '，其中 ' + dupN + ' 题与题库重复（默认未勾选）' : '') + '，请核对后入库');
+}
+
+/** 默认勾选：重复题不勾，避免手快点一下就往库里塞重复题 */
+function impDefaultSel(items){
+  const s = new Set();
+  items.forEach((q,i)=>{ if(!q.dup) s.add(i); });
+  return s;
+}
+
+async function commitImport(){
+  if(!IMP.sel.size){ toast('还没有勾选题目', true); return; }
+  IMP.failed = [];
+  // 缺题干的必须拦下（没有题干根本不成题）。缺答案的可以入成"草稿"：
+  // 老题库（厂商模板导出的面试题库）常常整份没有答案列，一律拦下来等于白导。
+  const noStem = [];
+  const noAns = [];
+  Array.from(IMP.sel).forEach(i=>{
+    const m = impMissing(IMP.items[i]);
+    if(m.stem) noStem.push(i + 1);
+    else if(m.answer) noAns.push(i + 1);
+  });
+  if(noStem.length){
+    toast('第 ' + noStem.slice(0, 5).join('、') + (noStem.length > 5 ? ' 等' : '') +
+          ' 题缺题干；请补全或取消勾选', true);
+    return;
+  }
+  if(noAns.length && !confirm(
+      '有 ' + noAns.length + ' 题没有答案，将先入库为「缺答案」草稿。\n' +
+      '草稿可以编辑补答案，但不会参与组卷。继续吗？')) return;
+  const items = Array.from(IMP.sel).map(i=>IMP.items[i]);
+  const btn = event && event.target;
+  if(btn){ btn.disabled = true; btn.textContent = '入库中…'; }
+  const r = await API.post('/api/import/commit', {items, filename: IMP.filename || '未命名文件'});
+  if(btn){ btn.disabled = false; btn.textContent = '确认入库'; }
+  if(!r.ok){ toast('入库失败', true); return; }
+  toast('已入库 ' + r.imported + ' 题' + (r.failed ? '，' + r.failed + ' 题未入库' : ''));
+  if(r.failed && r.errors && r.errors.length){
+    // 不弹 alert 把页面卡住：留在本页，把失败原因贴在表格上方，改完再提交一次
+    IMP.failed = r.errors;
+    rerenderImport();
+    impDeselectFailed(r.errors);
+    return;
+  }
+  IMP = {items:[], sel:new Set(), warnings:[], failed:[], filename:''};
+  await loadState();
+  go('bank');
+}
+
+/** 未入库的题取消勾选，避免用户重复提交同一批错题 */
+function impDeselectFailed(errors){
+  const bad = new Set(errors.map(e=>e.stem));
+  IMP.items.forEach((q,i)=>{
+    if(bad.has((q.stem || '').slice(0,20))) IMP.sel.delete(i);
+  });
+  rerenderImport();
+}
+
+// ---------------------------------------------------------------- 系统设置
+/** AI 配置（FR 之外新增）：接口地址 / 密钥 / 模型。
+ *  密钥只在本机 data/ai.json，页面只显示末 4 位；留空表示不修改。 */
+function aiConfigCard(){
+  const ai = STATE.ai || {};
+  const status = ai.ready
+    ? '<span style="color:#0f7b4f">已配置，可识别图片与乱版式材料</span>'
+    : '<span style="color:#b45309">未配置，只能用本地规则</span>';
+  return `<div class="card">
+    <div class="card-h"><b>AI 识别</b><span style="font-size:12px;color:var(--text-3)">${status}</span></div>
+    <div class="card-b">
+      <div class="form">
+        <div class="f c6"><label>接口地址</label>
+          <input id="aiBase" placeholder="https://api.deepseek.com/v1" value="${esc(ai.base_url || '')}"></div>
+        <div class="f c6"><label>密钥 ${ai.has_key?`<span style="color:var(--text-3);font-weight:400">（已存 ${esc(ai.api_key_masked||'')}，留空不改）</span>`:''}</label>
+          <input id="aiKey" type="password" placeholder="${ai.has_key ? '留空表示不修改' : 'sk-…'}"></div>
+        <div class="f c6"><label>文本模型</label>
+          <input id="aiModel" placeholder="deepseek-chat" value="${esc(ai.model || '')}"></div>
+        <div class="f c6"><label>视觉模型（可选）</label>
+          <input id="aiVision" placeholder="留空则用文本模型" value="${esc(ai.vision_model || '')}"></div>
+        <div class="f c6"><label>超时（秒）</label>
+          <input id="aiTimeout" type="number" min="30" step="30" value="${esc(String(ai.timeout || 300))}"></div>
+      </div>
+      <div class="hint" style="margin-top:8px;line-height:1.8">
+        兼容 OpenAI 格式的接口都行（DeepSeek、通义千问、豆包、Kimi、OpenAI 等）。
+        只填接口地址、密钥、模型名即可，末尾带上 <code>/v1</code>。
+        密钥只保存在本机 <code>data/ai.json</code>，不会写进数据库、也不会出现在日志里。<br>
+        <b>读扫描件 / 图片 PDF 须用支持看图的多模态模型</b>（Qwen-VL、GLM-4V、Kimi-K3 等）；
+        纯文本模型（DeepSeek 等）看不了图，要么主模型直接选多模态，要么单独填「视觉模型」。<br>
+        带思维链的推理模型（Kimi-K3 等）识别一页扫描件要两三分钟，超时别低于 300 秒，否则会报"超时"。
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="primary" onclick="saveAiConfig()">保存</button>
+        <button onclick="testAi()">测试连通</button>
+        <button onclick="clearAiKey()">清除密钥</button>
+        <span id="aiResult" style="font-size:12.5px;color:var(--text-2)"></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function saveAiConfig(){
+  const payload = {
+    base_url: (document.getElementById('aiBase').value || '').trim(),
+    model: (document.getElementById('aiModel').value || '').trim(),
+    vision_model: (document.getElementById('aiVision').value || '').trim(),
+    timeout: parseInt(document.getElementById('aiTimeout').value, 10) || 300,
+    enabled: true,
+  };
+  const key = (document.getElementById('aiKey').value || '').trim();
+  if(key) payload.api_key = key;      // 留空不传，后端就不会把已存的密钥抹掉
+  try{
+    const r = await API.post('/api/ai/config', payload);
+    STATE.ai = (r && r.config) || STATE.ai;
+    toast('已保存');
+    route();
+  }catch(e){ toast('保存失败：' + e.message, true); }
+}
+
+async function clearAiKey(){
+  if(!confirm('清除后图片与乱版式材料将无法识别，确定清除密钥？')) return;
+  try{
+    const r = await API.post('/api/ai/config', {clear_key: true});
+    STATE.ai = (r && r.config) || null;
+    toast('密钥已清除');
+    route();
+  }catch(e){ toast('操作失败：' + e.message, true); }
+}
+
+async function testAi(){
+  const box = document.getElementById('aiResult');
+  if(box) box.textContent = '正在测试…';
+  try{
+    const r = await API.post('/api/ai/test', {});
+    if(box){
+      box.textContent = r.ok ? ('连通正常，模型：' + (r.model || '—')) : ('连接失败：' + (r.error || ''));
+      box.style.color = r.ok ? '#0f7b4f' : '#b91c1c';
+    }
+  }catch(e){
+    if(box){ box.textContent = '测试失败：' + e.message; box.style.color = '#b91c1c'; }
+  }
+}
+
+async function viewSettings(){
+  const s = STATE.settings;
+  const bk = await API.get('/api/backups');
+  // 核对"跑的是不是最新代码"的最方便位置：版本和本次运行时间都在这里
+  let ver = {};
+  try{ ver = await API.get('/api/version') || {}; }catch(_){ ver = {}; }
+  const verTxt = ver.version ? ver.version : '未知（旧版本）';
+  const bootTxt = ver.started_at ? ver.started_at : '—';
+  const mb = (bk.db_size / 1048576).toFixed(2);
+  const cats = STATE.cats.map(c=>`
+    <div style="border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <input value="${esc(c.name)}" style="width:130px" onchange="catAction('rename_cat',{id:${c.id},name:this.value})">
+        <span style="font-size:12px;color:var(--text-3)">${c.subs.length} 个二级</span>
+        <span style="flex:1"></span>
+        <button style="padding:2px 8px;font-size:12px" onclick="catAction('del_cat',{id:${c.id}})">删除</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+        ${c.subs.map(x=>`<span class="tag" style="padding:3px 8px;font-size:12px">
+          ${esc(x.name)}<a href="javascript:;" onclick="catAction('del_sub',{id:${x.id}})" style="color:var(--danger);margin-left:5px;text-decoration:none">×</a>
+        </span>`).join('')}
+        <span class="tag" style="padding:3px 8px;font-size:12px;cursor:pointer;background:#fff;border:1px dashed var(--line-2)"
+          onclick="addSub(${c.id})">+ 新增二级</span>
+      </div>
+    </div>`).join('');
+
+  const rows = bk.items.length ? bk.items.map(it=>`<tr>
+      <td>${esc(it.name)}</td>
+      <td class="num">${(it.size/1024).toFixed(0)} KB</td>
+      <td style="font-size:12px;color:var(--text-3)">${it.mtime}</td>
+      <td style="white-space:nowrap">
+        <button style="padding:2px 8px;font-size:12px" onclick="restoreBackup('${esc(it.name)}')">恢复</button>
+      </td>
+    </tr>`).join('') : '<tr><td colspan="4" class="empty">暂无备份，点「立即备份」生成</td></tr>';
+
+  return `<div class="page-head"><div><h1>系统设置</h1><p>单位信息、分类维护、数据备份与清理</p></div></div>
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <div class="card-h"><b>单位与默认值</b></div>
+        <div class="card-b">
+          <div class="form">
+            <div class="f c6"><label>单位名称（印在卷头）</label><input id="sUnit" value="${esc(s.unit_name)}"></div>
+            <div class="f c3"><label>试卷编号前缀</label><input id="sPrefix" value="${esc(s.paper_prefix)}"></div>
+            <div class="f c3"><label>默认考试时长（分钟）</label><input type="number" id="sDuration" value="${esc(s.duration)}"></div>
+            <div class="f c4"><label>单选默认分值</label><input type="number" step="0.5" id="sSingle" value="${esc(s.score_single)}"></div>
+            <div class="f c4"><label>多选默认分值</label><input type="number" step="0.5" id="sMulti" value="${esc(s.score_multi)}"></div>
+            <div class="f c4"><label>判断默认分值</label><input type="number" step="0.5" id="sJudge" value="${esc(s.score_judge)}"></div>
+            <div class="f c4"><label>填空每空分值</label><input type="number" step="0.5" id="sFill" value="${esc(s.score_fill_blank)}"></div>
+            <div class="f c4"><label>问答默认分值</label><input type="number" step="0.5" id="sQa" value="${esc(s.score_qa)}"></div>
+            <div class="f c4"><label>备份保留份数</label><input type="number" id="sKeep" value="${esc(s.backup_keep)}"></div>
+          </div>
+          <div style="margin-top:14px"><button class="primary" onclick="saveSettings()">保存设置</button></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><b>分类维护</b><span style="font-size:12px;color:var(--text-3)">有题目的分类不能删除</span></div>
+        <div class="card-b">
+          ${cats}
+          <button onclick="addCat()">+ 新增一级分类</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      ${aiConfigCard()}
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><b>数据与备份</b></div>
+        <div class="card-b" style="padding:12px 16px">
+          <div class="pre-item"><span>数据目录</span><b style="font-size:11.5px;word-break:break-all;text-align:right;max-width:220px">${esc(bk.data_dir)}</b></div>
+          <div class="pre-item"><span>数据库大小</span><b>${mb} MB</b></div>
+          <div class="pre-item"><span>题目 / 试卷</span><b>${STATE.stats.total} / ${STATE.stats.papers}</b></div>
+          <div class="pre-item"><span>软件版本</span><b>${esc(verTxt)}${ver.stale?' · <span class="bad">代码已更新，需重启</span>':''}</b></div>
+          <div class="pre-item"><span>本次运行始于</span><b>${esc(bootTxt)}</b></div>
+          <div class="pre-item"><span>备份保留</span><b>${bk.items.length} 份</b></div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="primary" onclick="doBackup()">立即备份</button>
+            <button onclick="doMaintenance('vacuum', '压缩数据库')">压缩数据库</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><b>备份记录</b></div>
+        <div style="max-height:280px;overflow:auto">
+          <table><thead><tr><th>文件</th><th>大小</th><th>时间</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><b>清理</b></div>
+        <div class="card-b" style="padding:12px 16px">
+          <div class="notice" style="margin-bottom:10px">清理不可撤销，系统会在操作前自动备份一次。</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="danger" onclick="doMaintenance('clear_papers', '清空全部试卷')">清空试卷库</button>
+            <button class="danger" onclick="doMaintenance('clear_questions', '清空全部题目')">清空题库</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function saveSettings(){
+  const g = id => document.getElementById(id).value;
+  const r = await API.post('/api/settings', {
+    unit_name: g('sUnit'), paper_prefix: g('sPrefix'), duration: g('sDuration'),
+    score_single: g('sSingle'), score_multi: g('sMulti'), score_judge: g('sJudge'),
+    score_fill_blank: g('sFill'), score_qa: g('sQa'), backup_keep: g('sKeep'),
+  });
+  await loadState();
+  toast('设置已保存');
+  route();
+}
+
+async function catAction(action, payload){
+  if(action.startsWith('del') && !confirm('确定删除？该操作不可撤销。')) return;
+  const r = await API.post('/api/categories', Object.assign({action}, payload));
+  if(!r.ok){ toast(r.error, true); return; }
+  await loadState();
+  route();
+  toast('已更新分类');
+}
+function addCat(){
+  const n = prompt('新增一级分类名称');
+  if(!n) return;
+  catAction('add_cat', {name: n});
+}
+function addSub(cid){
+  const n = prompt('新增二级分类名称');
+  if(!n) return;
+  catAction('add_sub', {cat_id: cid, name: n});
+}
+
+async function doBackup(){
+  const r = await API.post('/api/backup', {});
+  if(r.ok) toast('已备份：' + r.file.split('\\\\').pop());
+  route();
+}
+async function restoreBackup(name){
+  if(!confirm('用该备份覆盖当前数据？覆盖前会自动再备份一次当前数据。')) return;
+  const r = await API.post('/api/backups/restore', {name});
+  if(!r.ok){ toast(r.error, true); return; }
+  await loadState();
+  route();
+  toast('已恢复，恢复前的数据存为 ' + r.safety);
+}
+async function doMaintenance(action, label){
+  if(!confirm('确认' + label + '？此操作不可撤销。')) return;
+  const b = await API.post('/api/backup', {});
+  const r = await API.post('/api/maintenance', {action});
+  if(!r.ok){ toast(r.error || '操作失败', true); return; }
+  await loadState();
+  route();
+  toast(label + '完成，已先备份');
+}
+
+// ---------------------------------------------------------------- 占位
+function placeholder(title, lines){
+  return `<div class="page-head"><div><h1>${title}</h1><p>${lines[0]}</p></div></div>
+  <div class="card"><div class="placeholder"><b>该模块正在开发中</b>${lines.slice(1).map(l=>`<div>${l}</div>`).join('')}</div></div>`;
+}
+
+// ---------------------------------------------------------------- 路由
+async function route(){
+  renderNav();
+  const main = document.getElementById('main');
+  const hash = location.hash.replace('#','') || 'dashboard';
+  const [key, query] = hash.split('?');
+  const params = Object.fromEntries(new URLSearchParams(query||''));
+  if(key!=='editor') EDIT = null;
+  main.innerHTML = '<div class="empty">加载中…</div>';
+  try{
+    if(key==='dashboard'){ main.innerHTML = viewDashboard(); loadHealth(); }
+    else if(key==='bank') main.innerHTML = await viewBank();
+    else if(key==='editor'){ main.innerHTML = await viewEditor(params); bindEditorDom(); }
+    else if(key==='import'){
+      main.innerHTML = viewImport();
+      loadImportLogs();
+      if(params.demo){
+        // demo 只消费一次：立刻从地址栏摘掉。
+        // 否则 parseB64 成功后调用 route() 会再次命中 params.demo -> importDemo -> route()，
+        // 形成对 /api/import/parse 的循环请求（页面上表现为「正在解析…」与结果表同时存在）。
+        try{ history.replaceState(null, '', '#import'); }catch(_){}
+        importDemo();
+      }
+    }
+    else if(key==='paper'){ main.innerHTML = await viewPaper(); refreshPrecheck(); }
+    else if(key==='papers') main.innerHTML = await viewPapers();
+    else if(key==='paper-detail'){ main.innerHTML = await viewPaperDetail(params); if(params.tab==='ans') switchSheet(1); }
+    else if(key==='settings') main.innerHTML = await viewSettings();
+    else main.innerHTML = viewDashboard();
+  }catch(e){
+    main.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+window.addEventListener('hashchange', route);
+window.addEventListener('keydown', e=>{ if(e.ctrlKey && e.key==='s'){ e.preventDefault(); if(EDIT) saveQuestion(false); } });
+
+/** 后端自报「跑的到底是不是磁盘上的最新代码」。
+ *  改了代码没重启时，ui.html（磁盘文件，刷新即生效）是新的、server.py（进程内存）是旧的，
+ *  表现为"新按钮点下去报 not found"，从界面上看不出任何原因。旧后端连这个接口都没有，
+ *  返回 {"ok":false,"error":"not found"} —— 那更该提示重启。 */
+/** 该不该弹"运行的还是旧版本"提示。抽成纯函数是为了能被用例直接断言——
+ *  提示不弹出来，这个功能就等于没做。
+ *  三种输入：正常应答（看 stale）、旧后端（没有这个接口，ok=false，必须提示）、
+ *  请求本身失败（null，按"不知道"处理，不吓唬人）。 */
+function staleBarNeeded(st){
+  if(!st) return false;
+  if(st.ok === false) return true;
+  return st.stale === true;
+}
+
+async function checkStale(){
+  let st = null;
+  try{ st = await API.get('/api/version'); }catch(_){ return; }
+  if(!staleBarNeeded(st)) return;
+  const bar = document.getElementById('staleBar');
+  if(!bar) return;
+  const unknown = st.ok === false || !('stale' in st);
+  const desc = bar.querySelector('.desc');
+  if(desc && unknown){
+    desc.innerHTML = '<b>软件代码已更新，但本机运行的还是旧版本</b>（这个版本甚至没有自检接口），'
+      + '新加的按钮点下去会报 <code>not found</code>。请先双击 <code>停止试卷系统.bat</code>，'
+      + '再双击 <code>启动试卷系统.bat</code>（数据库和题库不受影响）。';
+  }
+  bar.hidden = false;
+  document.body.classList.add('has-stale');
+}
+
+(async function(){
+  checkStale();     // 不 await：自检慢一点不该拖住首屏
+  await loadState();
+  route();
+})();
+</script>
+</body>
+</html>
