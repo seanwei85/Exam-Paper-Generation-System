@@ -1007,6 +1007,16 @@ def postprocess(items):
     return out, warn_ans + warn_opt
 
 
+def parse_text(text, cats=None, default_type=None):
+    """已抽出文字的材料走同一套规则解析（OCR 通道复用，P30）。"""
+    text = strip_furniture(text or "")
+    items = split_questions(text, default_type=default_type, cats=cats)
+    items, warns = postprocess(items)
+    if not items:
+        raise ImportError_("OCR 认出了文字但没拆出题目：页面版式可能太乱，请改用视觉模型识别")
+    return {"items": items, "warnings": warns, "chars": len(text), "by": "text"}
+
+
 def parse(raw, filename, cats=None, default_type=None):
     if len(raw) > MAX_FILE:
         raise ImportError_("文件超过 20MB，请拆分后再导入")

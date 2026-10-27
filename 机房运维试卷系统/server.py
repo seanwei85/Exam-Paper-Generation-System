@@ -1015,6 +1015,38 @@ def _progress_sweep():
             PROGRESS.pop(k, None)
 
 
+def _try_ocr_parse(raw, cats=None, default_type=None):
+    """图片型 PDF 的本地兜底（P30，FR-IM-28）：Windows 自带 OCR 认字，
+    认出的文字交给现有规则解析。返回 None 表示 OCR 不可用或没认出题目，
+    调用方走原来的视觉模型流程；两道失败原因不同，报错文案要分得开。"""
+    import importer, ocr_win, pdftext
+    if not ocr_win.engine_ready():
+        return None
+    try:
+        pages = pdftext.page_images(raw)
+    except Exception:
+        return None
+    texts = []
+    for pg in pages:
+        png = pg.get("png")
+        if not png:
+            continue
+        try:
+            t = ocr_win.ocr_png_bytes(png)
+        except ocr_win.OcrError:
+            continue
+        if t.strip():
+            texts.append(t.strip())
+    if not texts:
+        return None
+    try:
+        res = importer.parse_text("\n".join(texts), cats=cats, default_type=default_type)
+    except importer.ImportError_:
+        return None
+    res["by"] = "local-ocr"
+    return res
+
+
 def import_parse(payload):
     """导入解析的统一入口（本地规则 / AI 识别 由 engine 决定）。
 
@@ -1080,8 +1112,11 @@ def import_parse(payload):
             if res["items"] or engine == "local":
                 return res
         except importer.ScannedPdfError as exc:
-            # 图片型 PDF：PDF 本体喂给模型没用（模型只认图片，不认 PDF 二进制），
-            # 但页面图我们自己抽得出来，逐页转成 PNG 交给视觉模型即可。
+            # 图片型 PDF：先试 Windows 自带 OCR（本地、免费、不挑模型，P30），
+            # 认不出再退回视觉模型。OCR 认出的字与文字版 PDF 走同一套规则。
+            ocr_res = _try_ocr_parse(raw, cats, default_type)
+            if ocr_res:
+                return ocr_res
             if engine == "local":
                 raise
             if not ai_parse.ready():
@@ -1109,6 +1144,9 @@ def import_parse(payload):
     try:
         text = importer.read_file(raw, filename)
     except importer.ScannedPdfError as exc:
+        ocr_res = _try_ocr_parse(raw, cats, default_type)
+        if ocr_res:
+            return ocr_res
         if engine == "local":
             raise
         try:

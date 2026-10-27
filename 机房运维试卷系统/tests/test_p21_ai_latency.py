@@ -82,6 +82,7 @@ class P21Progress(HttpCase):
 
     @classmethod
     def setUpClass(cls):
+        cls._no_ocr()            # 必须在服务进程出生前就位
         super().setUpClass()
         cls.fake = FakeAI().start()
 
@@ -91,6 +92,18 @@ class P21Progress(HttpCase):
             cls.fake.stop()
         finally:
             super().tearDownClass()
+            cls._restore_ocr()
+    @classmethod
+    def _no_ocr(cls):
+        """P30 起 OCR 通道先于视觉模型，测视觉路径必须显式声明"引擎不可用"。"""
+        os.environ["ZJLAB_OCR_PS1"] = os.path.join(HERE, "fixtures", "fake_ocr.ps1")
+        os.environ["FAKE_OCR_MODE"] = "gone"
+
+    @classmethod
+    def _restore_ocr(cls):
+        for k in ("ZJLAB_OCR_PS1", "FAKE_OCR_MODE", "FAKE_OCR_TEXT"):
+            os.environ.pop(k, None)
+
 
     def setUp(self):
         super().setUp()
