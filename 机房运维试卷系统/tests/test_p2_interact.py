@@ -214,18 +214,20 @@ class P2ImportInteract(RenderCase):
         self.assertEqual(st["stats"]["draft"], 1, "缺答案的题没有标成草稿")
 
     def test_option_column_shows_text_not_count(self):
-        """识别结果表的「选项」列要显示选项内容，不能只给个数（用户反馈：
-        题干有内容、选项只有数字，识别质量没核对就入库了）。"""
+        """识别结果表的「选项」列要显示选项内容，且是和题干/答案一样的输入框
+        （用户反馈：先只有个数，改成纯文本后又缺输入框，视觉上不像能改的样子）。"""
         c = self.open_demo()
-        cell = c.eval(
-            "document.querySelector('.imp-table tbody tr[data-row=\\'0\\'] .c-opt').innerText")
-        self.assertIn("A.", cell, "选项列没有显示选项字母")
-        self.assertIn("自来水", cell, "选项列没有显示选项内容（还是个数）")
-        self.assertIn("B.", cell, "选项列只显示了第一个选项")
-        # 悬停能看全文：title 里带完整选项文本
-        title = c.eval(
-            "document.querySelector('.imp-table tbody tr[data-row=\\'0\\'] .c-opt').getAttribute('title')")
-        self.assertIn("自来水", title, "悬停提示里没有完整选项文本")
+        row = ".imp-table tbody tr[data-row='0'] .c-opt"
+        q = lambda sel: 'document.querySelectorAll("%s %s").length' % (row, sel)
+        n = c.eval(q(".opt-edit input"))
+        self.assertGreaterEqual(n, 2, "每个选项要有一个输入框")
+        first = c.eval('document.querySelector("%s .opt-edit input").value' % row)
+        self.assertEqual(first, "自来水", "输入框里应是选项内容")
+        # 行内可编辑：改完写回 IMP.items，与题干/答案同一数据路径
+        self.set_value("%s .opt-edit input" % row, "纯净水")
+        self.assertEqual(
+            c.eval("IMP.items[0].options[0].text"), "纯净水",
+            "改选项内容没有写回数据")
 
     def test_missing_stem_still_blocks_commit(self):
         """缺题干才是真的不成题：必须拦下并指出第几题。"""

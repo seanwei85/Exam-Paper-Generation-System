@@ -199,8 +199,12 @@ td.stem .opt-line{font-size:12px;color:var(--text-2);margin-top:2px;white-space:
 .imp-table .c-cat{width:96px}
 .imp-table .c-sub{width:122px}
 .imp-table .c-ans{width:120px}
-.imp-table .c-opt{width:220px;max-width:220px}
-.imp-table .c-opt .opt-line{font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.imp-table .c-opt{width:230px;max-width:230px}
+/* 选项列做成和题干/答案一样的输入框，每选项一行：既能核对也能直接改（用户反馈） */
+.imp-table .c-opt .opt-edit{display:flex;gap:5px;align-items:center;margin-bottom:3px}
+.imp-table .c-opt .opt-edit:last-child{margin-bottom:0}
+.imp-table .c-opt .opt-key{flex:0 0 14px;text-align:center;font-size:12px;color:var(--text-3);font-weight:600}
+.imp-table .c-opt .opt-edit input{flex:1;min-width:0;font-size:12px;padding:2px 6px}
 .imp-table .c-del{width:44px;text-align:center}
 .imp-table select,.imp-table input{width:100%;padding:4px 6px;font-size:12.5px}
 .imp-table .stem-in{font-size:12.8px}
@@ -1908,8 +1912,8 @@ function renderImportResult(){
         ${STATE.types.map(t=>`<option value="${t.key}" ${q.qtype===t.key?'selected':''}>${t.name.replace('项选择','选').replace('判断题','判断').replace('填空题','填空').replace('问答题','问答')}</option>`).join('')}
       </select></td>
       <td><div class="stem-cell">${dupTag}<input class="stem-in" value="${esc(q.stem)}" onchange="impSet(${i},'stem',this.value)"></div></td>
-      <td class="c-opt" title="${esc((q.options||[]).map(o=>o.key+'. '+(o.text||'')).join('  '))}">${(q.options||[]).filter(o=>(o.text||'').trim()).length
-        ? `<div class="opt-line">${q.options.filter(o=>(o.text||'').trim()).map(o=>`${esc(o.key)}. ${esc(o.text)}`).join('&emsp;')}</div>`
+      <td class="c-opt">${(q.qtype==='single'||q.qtype==='multi') && q.options && q.options.length
+        ? q.options.map((o,oi)=>`<div class="opt-edit"><span class="opt-key">${esc(o.key||'ABCDEF'[oi])}</span><input value="${esc(o.text||'')}" placeholder="选项内容" onchange="impSetOpt(${i},${oi},this.value)"></div>`).join('')
         : '-'}</td>
       <td class="c-ans"><input value="${esc(q.answer)}" ${miss.answer?'placeholder="缺答案"':''} onchange="impSet(${i},'answer',this.value)"></td>
       <td class="c-diff"><select onchange="impSet(${i},'diff',this.value)">
@@ -1969,6 +1973,13 @@ function impAll(on){
 }
 function impSet(i, field, v){
   IMP.items[i][field] = v;
+  impMarkRow(i);
+}
+/** 识别结果表里直接改某个选项的文字（与题干/答案的行内编辑同一路径） */
+function impSetOpt(i, oi, v){
+  const o = (IMP.items[i].options||[])[oi];
+  if(!o) return;
+  o.text = v;
   impMarkRow(i);
 }
 function impSetCat(i, catId){
