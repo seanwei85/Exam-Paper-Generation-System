@@ -270,7 +270,11 @@ STD_RE = re.compile(
     r"^\s*\d{0,3}\s*标准号\s*[:：]\s*(?:《([^》]+)》|<<([^>]+)>>)\s*([^◆]*?)◆\s*(.*)$")
 NUM_RE = re.compile(r"^\s*(\d{1,3})\s*[\.、．\)）]\s*(.*)$")
 #: 选项行。行首可能带「答题解析」导出的圆点标记：● 是正确答案、○ 是错项（见 P24）。
-OPT_RE = re.compile(r"^\s*([○●◯〇◦]?)\s*[（\(【\[]?\s*([A-Ha-h])\s*[）\)】\]\.、．:：]\s*(.+)$")
+#: 分隔符含逗号（P32）：答题解析导出有「●A, 电池失效;」这种写法。
+OPT_RE = re.compile(r"^\s*([○●◯〇◦]?)\s*[（\(【\[]?\s*([A-Ha-h])\s*[）\)】\]\.、．:：,，]\s*(.+)$")
+#: 无字母的圆点选项（P32）：「○12」「●36」——答题人答卷导出时选项连字母都没带，
+#: 只剩圆点标记。● 仍是正确答案。字母按出现顺序自动编 A/B/C…。
+CIRC_OPT_RE = re.compile(r"^\s*([○●◯〇◦])\s*(\S.*)$")
 #: 一行里挤着多条选项（`A. 5500*1400   B、5500*1600  C、6000*1600`）。只在空白之后、
 #: 且字母紧接序号时才算——句子中间的「A、B、C 三类负荷」不许切。
 INLINE_OPT_RE = re.compile(r"(?:^|[\s　┋│|\t]+)[（(]?([A-H])[）\)】\]\.、．:：]\s*")
@@ -465,6 +469,10 @@ def split_questions(text, default_type=None, default_diff="mid", cats=None):
                 blank = "（　　）" if m.group(1) == "（" else "(    )"
                 stem = stem[:m.start()] + blank + stem[m.end():]
         qtype = cur["qtype"] or section_type or _guess_type(stem, opts, cur["answer"])
+        # 段落标题说「问答题」、题目却带着选项——以数据为准（P32，真实文件里
+        # 这批圆点选项题就是这么被标题按成 qa、选项全挤进题干的）。
+        if len(opts) >= 2 and qtype not in ("single", "multi"):
+            qtype = "multi" if len((cur["answer"] or "").strip()) > 1 else "single"
         answer = _clean_answer(qtype, cur["answer"])
         diff = cur["diff"] or default_diff
         items.append({
@@ -582,6 +590,18 @@ def split_questions(text, default_type=None, default_diff="mid", cats=None):
                                        "correct": mark == CORRECT_MARK})
                 for k, t in tails:
                     cur["options"].append({"key": k, "text": t, "correct": False})
+                return
+        # 无字母的圆点选项（P32）：○/● 后面直接跟内容。「●36」是正确项。
+        # 只在有题干之后才认（题干还一行没有时，行首圆点更像正文标记）；
+        # 选项已满 8 个也不再吃，防止整页圆点符号的正文被吞成一道题。
+        m = CIRC_OPT_RE.match(line)
+        if m and cur is not None and not cur["answer"] \
+                and (cur["stem_lines"] or cur["options"]) and len(cur["options"]) < 8:
+            used = {o["key"] for o in cur["options"]}
+            key = next((k for k in "ABCDEFGH" if k not in used), None)
+            if key:
+                cur["options"].append({"key": key, "text": m.group(2).strip(),
+                                       "correct": m.group(1) == CORRECT_MARK})
                 return
         # 普通行：追加到最后一个选项或题干
         if cur["options"]:
