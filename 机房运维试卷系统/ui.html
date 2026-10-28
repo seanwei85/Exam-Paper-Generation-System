@@ -199,7 +199,8 @@ td.stem .opt-line{font-size:12px;color:var(--text-2);margin-top:2px;white-space:
 .imp-table .c-cat{width:96px}
 .imp-table .c-sub{width:122px}
 .imp-table .c-ans{width:120px}
-.imp-table .c-opt{width:52px}
+.imp-table .c-opt{width:220px;max-width:220px}
+.imp-table .c-opt .opt-line{font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .imp-table .c-del{width:44px;text-align:center}
 .imp-table select,.imp-table input{width:100%;padding:4px 6px;font-size:12.5px}
 .imp-table .stem-in{font-size:12.8px}
@@ -1907,7 +1908,9 @@ function renderImportResult(){
         ${STATE.types.map(t=>`<option value="${t.key}" ${q.qtype===t.key?'selected':''}>${t.name.replace('项选择','选').replace('判断题','判断').replace('填空题','填空').replace('问答题','问答')}</option>`).join('')}
       </select></td>
       <td><div class="stem-cell">${dupTag}<input class="stem-in" value="${esc(q.stem)}" onchange="impSet(${i},'stem',this.value)"></div></td>
-      <td class="c-opt" style="text-align:center;color:var(--text-3)">${q.options.length || '-'}</td>
+      <td class="c-opt" title="${esc((q.options||[]).map(o=>o.key+'. '+(o.text||'')).join('  '))}">${(q.options||[]).filter(o=>(o.text||'').trim()).length
+        ? `<div class="opt-line">${q.options.filter(o=>(o.text||'').trim()).map(o=>`${esc(o.key)}. ${esc(o.text)}`).join('&emsp;')}</div>`
+        : '-'}</td>
       <td class="c-ans"><input value="${esc(q.answer)}" ${miss.answer?'placeholder="缺答案"':''} onchange="impSet(${i},'answer',this.value)"></td>
       <td class="c-diff"><select onchange="impSet(${i},'diff',this.value)">
         ${STATE.diffs.map(d=>`<option value="${d.key}" ${q.diff===d.key?'selected':''}>${d.name}</option>`).join('')}
