@@ -113,7 +113,9 @@ class P21Progress(HttpCase):
             os.remove(path)
         self.post_json("/api/ai/config", {"base_url": self.fake.base_url,
                                           "api_key": SECRET, "model": "fake-chat",
-                                          "timeout": 120, "enabled": True})
+                                          "timeout": 120, "enabled": True,
+                                          # P31 起图片型先探测视觉能力；本类专测"确认有视觉"这条路
+                                          "vision_ok": True, "vision_checked": "fake-chat"})
 
     # ---------------------------------------------------------- 辅助
 

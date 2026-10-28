@@ -1875,6 +1875,9 @@ function impByNote(){
   if(by.indexOf('ai-vision') >= 0){
     text = '这批题是 AI 看图识别出来的，手写、盖章、拍照倾斜都可能认错字，入库前请逐条看一眼题干和答案。';
     bg = '#fff8e6'; color = '#7a5b12';
+  }else if(by.indexOf('local-ocr+ai') >= 0){
+    text = '这批题由本地 OCR 认字、AI 整理成题目（模型没通过看图检测或看图失败时的兜底路）。题干与答案是否正确取决于 OCR 认字质量，请逐条核对。';
+    bg = '#fff8e6'; color = '#7a5b12';
   }else if(by.indexOf('ai') >= 0){
     text = '这批题是 AI 识别出来的（材料版式不规整，本地规则没拆出来）。建议重点核对题干与答案。';
     bg = '#fff8e6'; color = '#7a5b12';
@@ -2115,10 +2118,25 @@ function parsingText(filename){
 
 /** 解析中显示的文案：拿到页码就报页码，否则沿用原来那句 */
 function progressText(filename, p){
+  let txt = '';
   if(p && p.stage && p.stage.indexOf('AI') >= 0)
-    return '正在' + p.stage + '（' + filename + '）…图片型试卷每页要几分钟，请勿关闭此页面';
-  if(p && p.stage) return '正在' + p.stage + '（' + filename + '）…';
-  return parsingText(filename);
+    txt = '正在' + p.stage + '（' + filename + '）…图片型试卷每页要几分钟，请勿关闭此页面';
+  else if(p && p.stage) txt = '正在' + p.stage + '（' + filename + '）…';
+  else txt = parsingText(filename);
+  // 预估剩余时间：按已完成项的实际耗时算，跑得越多样本越准（P31）
+  if(txt){
+    if(p && p.eta_sec) txt += ' 预计剩余约 ' + etaText(p.eta_sec) + '。';
+    else if(p && p.elapsed >= 5) txt += ' 已用 ' + etaText(p.elapsed) + '，首项最慢，跑完一项就有预估。';
+  }
+  return txt;
+}
+
+function etaText(sec){
+  sec = Math.max(1, Math.round(sec));
+  if(sec < 60) return sec + ' 秒';
+  const m = Math.round(sec / 60);
+  if(m < 60) return m + ' 分钟';
+  return (sec / 3600).toFixed(1) + ' 小时';
 }
 
 async function parseB64(filename, b64){
@@ -2238,6 +2256,11 @@ function aiConfigCard(){
           <input id="aiModel" placeholder="deepseek-chat" value="${esc(ai.model || '')}"></div>
         <div class="f c6"><label>视觉模型（可选）</label>
           <input id="aiVision" placeholder="留空则用文本模型" value="${esc(ai.vision_model || '')}"></div>
+        <div class="f c6"><label>视觉能力</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:4px">
+            <span id="aiVisionState" style="font-size:12.3px">${visionStateText(ai)}</span>
+            <button style="padding:3px 10px;font-size:12px" onclick="probeVision()">重新检测</button>
+          </div></div>
         <div class="f c6"><label>超时（秒）</label>
           <input id="aiTimeout" type="number" min="30" step="30" value="${esc(String(ai.timeout || 300))}"></div>
       </div>
@@ -2245,8 +2268,8 @@ function aiConfigCard(){
         兼容 OpenAI 格式的接口都行（DeepSeek、通义千问、豆包、Kimi、OpenAI 等）。
         只填接口地址、密钥、模型名即可，末尾带上 <code>/v1</code>。
         密钥只保存在本机 <code>data/ai.json</code>，不会写进数据库、也不会出现在日志里。<br>
-        <b>读扫描件 / 图片 PDF 须用支持看图的多模态模型</b>（Qwen-VL、GLM-4V、Kimi-K3 等）；
-        纯文本模型（DeepSeek 等）看不了图，要么主模型直接选多模态，要么单独填「视觉模型」。<br>
+        导入扫描件 / 图片 PDF 时，软件会先发一张写着 AB12 的小图<b>检测模型能不能看图</b>（每个模型只测一次，结果记在本机）：
+        能看图就直接把页面图交给模型识别；不能看图就改走「本地 OCR 认字 + AI 整理」，纯文本模型也能用。<br>
         带思维链的推理模型（Kimi-K3 等）识别一页扫描件要两三分钟，超时别低于 300 秒，否则会报"超时"。
       </div>
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2275,6 +2298,33 @@ async function saveAiConfig(){
     toast('已保存');
     route();
   }catch(e){ toast('保存失败：' + e.message, true); }
+}
+
+/** 视觉能力判定（P31）：存在 ai.json 里，键带模型名，换模型自动失效 */
+function visionStateText(ai){
+  if(ai && ai.vision_checked){
+    return ai.vision_ok
+      ? '✅ ' + esc(ai.vision_checked) + ' 支持看图（扫描件直接交给模型）'
+      : '❌ ' + esc(ai.vision_checked) + ' 不支持看图（扫描件将走 本地OCR + AI）';
+  }
+  return '未检测（导入扫描件时自动检测一次）';
+}
+
+async function probeVision(){
+  const el = document.getElementById('aiVisionState');
+  const old = el ? el.textContent : '';
+  if(el) el.textContent = '检测中…（发一张小图给模型）';
+  try{
+    const r = await API.post('/api/ai/vision-probe', {});
+    if(r.config) STATE.ai = r.config;
+    if(el) el.textContent = visionStateText(STATE.ai);
+    if(r.vision_ok === true) toast('检测通过：该模型支持看图');
+    else if(r.vision_ok === false) toast('该模型不支持看图，扫描件将走 本地OCR + AI');
+    else toast('检测失败：' + (r.error || '稍后再试'), true);
+  }catch(e){
+    if(el) el.textContent = old || visionStateText(STATE.ai);
+    toast('检测失败：' + e.message, true);
+  }
 }
 
 async function clearAiKey(){

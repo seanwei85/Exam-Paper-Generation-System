@@ -62,12 +62,14 @@ class P23Hints(RenderCase):
     # ---------------------------------------------------------- 设置页
 
     def test_settings_hint_states_vision_requirement(self):
-        """设置页要常驻说清：读扫描件必须多模态模型，纯文本模型看不了图。"""
+        """P31 起不再要求"必须多模态"：设置页要说清自动检测看图能力，
+        以及不支持看图时的兜底路（本地 OCR + AI）。"""
         c = self.nav("settings", "!!document.getElementById('aiTimeout')")
         text = str(c.eval("document.body.textContent") or "")
-        self.assertIn("多模态", text, "缺'多模态'要求")
-        self.assertIn("视觉模型", text, "缺'视觉模型'填法")
-        self.assertIn("看不了图", text, "要说明纯文本模型的后果")
+        self.assertIn("能不能看图", text, "缺'自动检测看图能力'的说明")
+        self.assertIn("AB12", text, "要说清检测的具体做法")
+        self.assertIn("本地 OCR", text, "缺'不支持看图时的兜底路'")
+        self.assertIn("视觉能力", text, "设置页要有视觉能力检测区")
 
     # ---------------------------------------------------------- 导入页
 

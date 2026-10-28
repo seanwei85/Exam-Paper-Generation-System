@@ -88,7 +88,9 @@ def ocr_png_bytes(png):
         if "NOOCR" in out or "NOOCR" in err:
             raise OcrError(hint_when_missing())
         raise OcrError("OCR 运行失败：%s" % (err or out or ("退出码 %d" % p.returncode))[:200])
-    return out
+    # 假空格必须在出口就清掉：下游按"行首题号 + 选项字母"拆题，
+    # 汉字之间夹着空格时题号和选项都认不出来（"机 房 温 度" 拆不出题）。
+    return _despace(out)
 
 
 def hint_when_missing():

@@ -135,6 +135,8 @@ class P29Pause(RenderCase):
         self.assertGreaterEqual(done, 1)
         self.assertTrue(ch.eval("!document.querySelector('.ai-prog')"),
                         "收尾后进度条要撤掉，否则一直挂在页面上")
+        # 收尾会 route() 异步重渲染题库页，等按钮回来再断言（否则偶发 null）
+        ch.wait("!!document.getElementById('aiBtn')", timeout=10)
         self.assertFalse(ch.eval("document.getElementById('aiBtn').disabled"))
 
     def test_controls_absent_before_round(self):

@@ -966,17 +966,33 @@ def progress_start(job):
     _progress_sweep()
     with PROGRESS_LOCK:
         PROGRESS[job] = {"state": "running", "stage": "读取文件",
-                         "page": 0, "pages": 0, "ts": time.time()}
+                         "page": 0, "pages": 0, "ts": time.time(),
+                         "t0": time.time(),
+                         "_page_ts": None, "_page_no": None, "_page_secs": []}
 
 
-def progress_update(job, **kw):
+def progress_update(job, reset_eta=False, **kw):
+    """更新进度。reset_eta=True 表示换了处理路（如视觉失败改走 OCR），
+    旧路的页耗时不再代表新路的速度，估算样本要清零重攒。"""
     if not job:
         return
     with PROGRESS_LOCK:
         cur = PROGRESS.get(job)
         if not cur:
             return
+        if reset_eta:
+            cur["_page_secs"] = []
+            cur["_page_ts"] = None
+            cur["_page_no"] = None
         cur.update(kw)
+        # 页计时：页号推进时，把上一页的实际耗时记下来（ETA 的样本）。
+        # on_page 是"第 i 页开始"时调的，相邻两次调用之差就是上一页的耗时。
+        if kw.get("pages") and kw.get("page") is not None:
+            now = time.time()
+            if cur.get("_page_ts") and cur.get("_page_no") != kw.get("page"):
+                cur.setdefault("_page_secs", []).append(now - cur["_page_ts"])
+            cur["_page_ts"] = now
+            cur["_page_no"] = kw.get("page")
         cur["ts"] = time.time()
 
 
@@ -1003,6 +1019,18 @@ def progress_get(job):
             PROGRESS.pop(job, None)
             return {"ok": True, "state": "idle", "stage": "", "page": 0, "pages": 0}
         out = dict(cur)
+        # ETA：用已完成页的平均耗时 × 剩余页数。样本不足（首页在跑）就不给数，
+        # 免得用户盯着一个瞎猜的数。elapsed 一直给，让人知道"活着且在动"。
+        secs = out.get("_page_secs") or []
+        out["page_secs_count"] = len(secs)
+        out["elapsed"] = int(time.time() - out.get("t0", time.time()))
+        pages, page = int(out.get("pages") or 0), int(out.get("page") or 0)
+        if secs and pages > 0 and page > 0:
+            out["eta_sec"] = int(sum(secs) / len(secs) * max(1, pages - page + 1))
+        else:
+            out["eta_sec"] = None
+        for k in ("_page_ts", "_page_no", "_page_secs", "t0"):
+            out.pop(k, None)
     out["ok"] = True
     return out
 
@@ -1015,11 +1043,15 @@ def _progress_sweep():
             PROGRESS.pop(k, None)
 
 
-def _try_ocr_parse(raw, cats=None, default_type=None):
-    """图片型 PDF 的本地兜底（P30，FR-IM-28）：Windows 自带 OCR 认字，
-    认出的文字交给现有规则解析。返回 None 表示 OCR 不可用或没认出题目，
-    调用方走原来的视觉模型流程；两道失败原因不同，报错文案要分得开。"""
-    import importer, ocr_win, pdftext
+def _try_ocr_parse(raw, cats=None, default_type=None, use_ai=True, job=None):
+    """图片型 PDF 的本地 OCR（P30）+ 可选的 AI 整理（P31，FR-IM-29）。
+
+    Windows 自带 OCR 认字是免费的，但本地规则硬拆实测 12 题只能出 7 题
+    （题号认成 I./生、选项字母认成小写）；同样的文字交给模型整理是 12/12。
+    所以 use_ai=True 时优先"OCR 文字 → AI 整理"，AI 失败或没配才落本地规则。
+    返回 None 表示这条路走不通，调用方再试别的路；失败原因不同，报错要分得开。
+    """
+    import ai_parse, importer, ocr_win, pdftext
     if not ocr_win.engine_ready():
         return None
     try:
@@ -1027,10 +1059,14 @@ def _try_ocr_parse(raw, cats=None, default_type=None):
     except Exception:
         return None
     texts = []
-    for pg in pages:
+    total = len(pages)
+    for i, pg in enumerate(pages, 1):
         png = pg.get("png")
         if not png:
             continue
+        if use_ai:
+            progress_update(job, stage="本地 OCR 认字 第 %d/%d 页" % (i, total),
+                            page=i, pages=total)
         try:
             t = ocr_win.ocr_png_bytes(png)
         except ocr_win.OcrError:
@@ -1039,12 +1075,58 @@ def _try_ocr_parse(raw, cats=None, default_type=None):
             texts.append(t.strip())
     if not texts:
         return None
+    joined = "\n".join(texts)
+    if use_ai and ai_parse.ready():
+        progress_update(job, reset_eta=True, stage="把 OCR 文字交给 AI 整理…")
+        try:
+            res = ai_parse.extract_text(joined, cats=cats)
+        except ai_parse.AIError:
+            res = None
+        if res and res.get("items"):
+            res["by"] = "local-ocr+ai"
+            return res
     try:
-        res = importer.parse_text("\n".join(texts), cats=cats, default_type=default_type)
+        res = importer.parse_text(joined, cats=cats, default_type=default_type)
     except importer.ImportError_:
         return None
     res["by"] = "local-ocr"
     return res
+
+
+def _scanned_pdf_route(raw, cats, default_type, engine, job, exc):
+    """图片型 PDF 的路由（P31，FR-IM-29）：视觉优先，OCR+AI 兜底。
+
+    优先级按成功率定（2026-10-27 实测，2 页 12 题真值）：直接看图 12/12、
+    OCR+AI 整理 12/12、OCR+本地规则只有 7/12。所以确认模型能看图就走方式2，
+    半路失败自动降级方式1；确认不能看图直接走方式1。探测结果缓存，不重复花钱。
+    """
+    import ai_parse, importer
+    verdict = ai_parse.vision_verdict()
+    if verdict is None:
+        progress_update(job, stage="正在检测模型是否支持看图（一次性，之后记住结果）…")
+        try:
+            verdict = ai_parse.probe_vision()
+        except ai_parse.AIError:
+            verdict = None
+    vision_err = None
+    if verdict:
+        progress_update(job, reset_eta=True, stage="视觉模型直接看图")
+        try:
+            return ai_parse.extract_pdf_images(
+                raw, cats=cats,
+                on_page=lambda i, n: progress_update(
+                    job, stage="视觉模型直接看图 第 %d/%d 页" % (i, n),
+                    page=i, pages=n))
+        except ai_parse.AIError as v_exc:
+            vision_err = v_exc
+        progress_update(job, reset_eta=True,
+                        stage="视觉模型没认出来，改走本地 OCR + AI…")
+    res = _try_ocr_parse(raw, cats, default_type, use_ai=True, job=job)
+    if res:
+        return res
+    if vision_err:
+        raise importer.ImportError_(str(vision_err))
+    raise exc
 
 
 def import_parse(payload):
@@ -1112,20 +1194,20 @@ def import_parse(payload):
             if res["items"] or engine == "local":
                 return res
         except importer.ScannedPdfError as exc:
-            # 图片型 PDF：先试 Windows 自带 OCR（本地、免费、不挑模型，P30），
-            # 认不出再退回视觉模型。OCR 认出的字与文字版 PDF 走同一套规则。
-            ocr_res = _try_ocr_parse(raw, cats, default_type)
-            if ocr_res:
-                return ocr_res
+            # 图片型 PDF（P31 路由）：local 档 OCR→本地规则零网络；配了 AI 则
+            # 视觉优先、OCR+AI 兜底。各失败分支的文案保持各自的可操作性。
             if engine == "local":
+                ocr_res = _try_ocr_parse(raw, cats, default_type, use_ai=False, job=job)
+                if ocr_res:
+                    return ocr_res
                 raise
             if not ai_parse.ready():
+                ocr_res = _try_ocr_parse(raw, cats, default_type, use_ai=False, job=job)
+                if ocr_res:
+                    return ocr_res
                 raise exc if engine == "auto" else importer.ImportError_(
                     "%s\n（选「只用 AI」时需要先在系统设置里配好接口和密钥）" % exc)
-            try:
-                return ai_parse.extract_pdf_images(raw, cats=cats, on_page=on_page)
-            except ai_parse.AIError as ai_exc:
-                raise importer.ImportError_(str(ai_exc))
+            return _scanned_pdf_route(raw, cats, default_type, engine, job, exc)
         except importer.ImportError_ as exc:
             if engine == "local":
                 raise
@@ -1144,15 +1226,12 @@ def import_parse(payload):
     try:
         text = importer.read_file(raw, filename)
     except importer.ScannedPdfError as exc:
-        ocr_res = _try_ocr_parse(raw, cats, default_type)
+        ocr_res = _try_ocr_parse(raw, cats, default_type, use_ai=False, job=job)
         if ocr_res:
             return ocr_res
-        if engine == "local":
+        if engine == "local" or not ai_parse.ready():
             raise
-        try:
-            return ai_parse.extract_pdf_images(raw, cats=cats, on_page=on_page)
-        except ai_parse.AIError as ai_exc:
-            raise importer.ImportError_("%s\n%s" % (exc, ai_exc))
+        return _scanned_pdf_route(raw, cats, default_type, engine, job, exc)
     if not text.strip():
         raise importer.ImportError_("文件内容为空，或无法提取到文字")
     try:
@@ -1614,6 +1693,21 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/ai/test":
                 import ai_parse
                 self._send(200, ai_parse.test_connection())
+            elif path == "/api/ai/vision-probe":
+                # 手动"重新检测"：发一张写着 AB12 的小图，看模型能不能抄出来。
+                # 结果写缓存（键带模型名）；None=网络失败，如实告知不写缓存。
+                import ai_parse
+                try:
+                    verdict = ai_parse.probe_vision()
+                except ai_parse.AIError as exc:
+                    self._send(200, {"ok": False, "vision_ok": None, "error": str(exc)})
+                else:
+                    if verdict is None:
+                        self._send(200, {"ok": False, "vision_ok": None,
+                                         "error": "这会儿连不上模型，稍后再试（本次结果不缓存）"})
+                    else:
+                        self._send(200, {"ok": True, "vision_ok": verdict,
+                                         "config": ai_parse.public_config()})
             elif path == "/api/ai/review":
                 job = payload.get("job") or ""
                 progress_start(job)

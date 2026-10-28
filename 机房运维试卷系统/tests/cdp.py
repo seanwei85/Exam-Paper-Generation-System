@@ -155,8 +155,13 @@ class Chrome:
                       awaitPromise=True, userGesture=True)
         res = r.get("result", {})
         if r.get("exceptionDetails"):
-            raise RuntimeError("页面脚本异常：%s" % r["exceptionDetails"].get("text") or
-                               str(r["exceptionDetails"]))
+            det = r["exceptionDetails"]
+            exc = det.get("exception") or {}
+            raise RuntimeError("页面脚本异常：%s | %s | %s"
+                               % (det.get("text"), exc.get("description") or det.get("text"),
+                                  json.dumps({k: det.get(k) for k in
+                                              ("lineNumber", "columnNumber", "url")},
+                                             ensure_ascii=False)))
         return res.get("value")
 
     def goto(self, url, ready="document.readyState==='complete'"):

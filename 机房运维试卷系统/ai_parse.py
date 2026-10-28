@@ -33,10 +33,14 @@ DEFAULT_CONFIG = {
     "vision_model": "",
     "timeout": 300,
     "chunk_chars": 6000,
+    # 视觉能力探测结果（P31，FR-IM-29）：vision_checked 记录判定针对的模型名，
+    # 换模型自动失效。None = 还没测过（网络失败也不缓存，下次再试）。
+    "vision_ok": None,
+    "vision_checked": "",
 }
 
 CONFIG_KEYS = ("enabled", "base_url", "model", "vision_model",
-               "timeout", "chunk_chars")
+               "timeout", "chunk_chars", "vision_ok", "vision_checked")
 
 
 class AIError(Exception):
@@ -198,6 +202,115 @@ def test_connection(cfg=None):
         return {"ok": False, "error": str(exc)}
     return {"ok": True, "model": cfg.get("model"), "sample": (content or "")[:20],
             "ms": int((time.time() - started) * 1000)}
+
+
+# ---------------------------------------------------------------- 视觉探测
+
+#: 探测图上写的字符。模型要"抄出来"才算看图，防止只回一句客套话就误判。
+PROBE_TEXT = "AB12"
+
+#: 5x7 点阵，纯标准库画字，不依赖任何绘图库
+_PROBE_FONT = {
+    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
+    "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
+    "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
+}
+
+_PROBE_CACHE = {}
+
+
+def _png_chunk(tag, data):
+    import struct
+    import zlib
+    c = tag + data
+    return (struct.pack(">I", len(data)) + c
+            + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF))
+
+
+def _probe_png_bytes():
+    """一张白底黑字写着 AB12 的小 PNG（约 260x88）。进程内只画一次。"""
+    import struct
+    import zlib
+    if _PROBE_CACHE.get("png"):
+        return _PROBE_CACHE["png"]
+    scale, gap, margin = 8, 3, 2
+    gw = 5 * len(PROBE_TEXT) + gap * (len(PROBE_TEXT) - 1)
+    w, h = (gw + 2 * margin) * scale, (7 + 2 * margin) * scale
+    grid = [[0] * gw for _ in range(7)]
+    x = 0
+    for ch in PROBE_TEXT:
+        for ry, row in enumerate(_PROBE_FONT[ch]):
+            for rx, v in enumerate(row):
+                if v == "1":
+                    grid[ry][x + rx] = 1
+        x += 5 + gap
+    raw = bytearray()
+    for y in range(h):
+        gy = y // scale - margin
+        raw.append(0)                                   # filter type 0
+        for px in range(w):
+            gx = px // scale - margin
+            on = 0 <= gy < 7 and 0 <= gx < gw and grid[gy][gx]
+            raw += b"\x00\x00\x00" if on else b"\xff\xff\xff"
+    png = (b"\x89PNG\r\n\x1a\n"
+           + _png_chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+           + _png_chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+           + _png_chunk(b"IEND", b""))
+    _PROBE_CACHE["png"] = png
+    return png
+
+
+def vision_model_name(cfg=None):
+    """看图用哪个模型：单独配了视觉模型用它，否则用主模型。"""
+    cfg = cfg or load_config()
+    return (cfg.get("vision_model") or "").strip() or (cfg.get("model") or "").strip()
+
+
+def vision_verdict(cfg=None):
+    """当前缓存里的视觉能力判定：True/False；没测过或换了模型返回 None。"""
+    cfg = cfg or load_config()
+    if not ready(cfg):
+        return None
+    if (cfg.get("vision_checked") or "") != vision_model_name(cfg):
+        return None
+    ok = cfg.get("vision_ok")
+    return None if ok is None else bool(ok)
+
+
+def _probe_answer_hit(content):
+    """回答里真抄出了 AB12 才算看图（NFKC 归一，防全角/空格干扰）。"""
+    import unicodedata
+    norm = unicodedata.normalize("NFKC", re.sub(r"\s+", "", content or "")).upper()
+    return PROBE_TEXT in norm
+
+
+def probe_vision(cfg=None):
+    """探测当前模型能不能真的看图（FR-IM-29）。
+
+    为什么发一张带字的图、还要检查回答：有些网关把图静默丢弃照样回 200
+    （实测 DeepSeek-V4-Flash 回"请上传图片"），只看状态码必然误判。
+    返回 True/False（结果写进配置缓存，键带模型名）；
+    网络级失败返回 None（**不缓存**——断网不代表模型不支持，下次导入再试）；
+    没配置 AI 抛 AIError。
+    """
+    cfg = cfg or load_config()
+    if not ready(cfg):
+        raise AIError("还没配置 AI：先到「系统设置 · AI 识别」填好接口地址和密钥")
+    b64 = base64.b64encode(_probe_png_bytes()).decode()
+    messages = [{"role": "user", "content": [
+        {"type": "text", "text": "这张图片里写了什么？只输出图中那几个字符，不要解释。"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}},
+    ]}]
+    try:
+        content = chat(messages, cfg=cfg, model=vision_model_name(cfg),
+                       max_tokens=200, retries=0,
+                       timeout=min(int(cfg.get("timeout") or 300), 120))
+    except AIError:
+        return None
+    ok = _probe_answer_hit(content)
+    save_config({"vision_ok": ok, "vision_checked": vision_model_name(cfg)})
+    return ok
 
 
 # ---------------------------------------------------------------- 提示词

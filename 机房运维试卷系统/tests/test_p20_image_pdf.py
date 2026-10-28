@@ -167,7 +167,9 @@ class P20Vision(HttpCase):
         if os.path.exists(path):
             os.remove(path)
         self.ai.save_config({"api_key": SECRET, "base_url": self.fake.base_url,
-                             "model": "fake-chat", "vision_model": "fake-vl"})
+                             "model": "fake-chat", "vision_model": "fake-vl",
+                             # P31 起图片型先探测视觉能力；本类专测"确认有视觉"这条路
+                             "vision_ok": True, "vision_checked": "fake-vl"})
         self.cats = self.core.categories_tree(self.core.connect())
 
     def test_pages_are_sent_one_by_one(self):

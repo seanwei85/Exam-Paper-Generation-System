@@ -39,7 +39,9 @@ B、12V
 C、14V
 答案：A"""
 
-GOLD_STEM = "UPS 蓄电池放电终止电压"
+#: 去假空格会顺带压掉"中文与英文之间"的空格（"机房 UPS" → "机房UPS"），
+#: 所以金标准按压缩后的写法断言——判重本来就忽略空白，显示上无碍。
+GOLD_STEM = "UPS蓄电池放电终止电压"
 
 
 def _fixture():
@@ -106,6 +108,43 @@ class OcrWorks(ScannedCase):
         res = self.upload("local")
         self.assertTrue(res.get("ok"), res)
         self.assertEqual(res["by"], "local-ocr")
+
+
+class OcrSpaced(ScannedCase):
+    """Windows OCR 的真实输出：汉字之间夹假空格。
+
+    假空格必须在 ocr_png_bytes 出口就清掉——下游按"行首题号 + 选项字母"
+    拆题，字缝里的空格会让题号和选项一起认不出来。此前 _despace 只有单元测试，
+    链路里没接上，真机跑出来是"认了 467 个字却只拆出 2 道题"。
+    """
+
+    #: 与 OCR_TEXT 同题，只是每个汉字之间都插了空格（真机形态）
+    SPACED = """1、机 房 U P S 蓄 电 池 放 电 终 止 电 压 一 般 不 低 于 （ 　 ） 。
+A、10.8V
+B、12V
+C、14V
+答 案 ： A"""
+
+    @classmethod
+    def setUpClass(cls):
+        _fake_engine("questions", cls.SPACED)
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            super().tearDownClass()
+        finally:
+            _restore_engine()
+
+    def test_stem_is_free_of_spurious_spaces(self):
+        res = self.upload("auto")
+        self.assertTrue(res.get("ok"), res)
+        self.assertEqual(res["by"], "local-ocr")
+        it = res["items"][0]
+        self.assertNotIn("机 房", it["stem"])
+        self.assertIn(GOLD_STEM.replace(" ", ""), it["stem"].replace(" ", ""))
+        self.assertEqual(it["answer"], "A", "答案也得从'答 案 ： A'里抽出来")
 
 
 class OcrGone(ScannedCase):
@@ -188,6 +227,36 @@ class OcrModule(unittest.TestCase):
         self.assertIn("A. 10.8V", t, "半角之间的空格不能被误删")
         self.assertIn("B.巧一25", t)
         self.assertNotIn("机 房", t)
+
+    def test_ocr_output_is_despaced(self):
+        """去假空格必须接在 ocr_png_bytes 出口上，不能只留个 `_despace` 函数没人调。
+
+        踩过的坑：函数写了、用例也单测了，但出口没调，线上拿到的还是
+        "机 房 温 度"——下游按行首题号拆题，字之间全是空格就只拆得出两题。
+        """
+        orig_ps = ocr_win.PS_SCRIPT
+        ocr_win.PS_SCRIPT = FAKE_PS1
+        os.environ["FAKE_OCR_MODE"] = "questions"
+        os.environ["FAKE_OCR_TEXT"] = "机 房 温 度 （ ）\nA. 10.8V B. 12V"
+        try:
+            t = ocr_win.ocr_png_bytes(b"\x89PNG\r\n\x1a\n")
+        finally:
+            ocr_win.PS_SCRIPT = orig_ps
+        self.assertIn("机房温度", t)
+        self.assertIn("A. 10.8V", t, "半角之间的空格不能被误删")
+
+    def test_ocr_output_is_despaced(self):
+        """去假空格必须在 ocr_png_bytes 里生效，而不是只留一个函数给下游调用。"""
+        _fake_engine("questions", "机 房 温 度 （ ） 答 案 ： B")
+        orig = ocr_win.PS_SCRIPT
+        ocr_win.PS_SCRIPT = FAKE_PS1
+        try:
+            text = ocr_win.ocr_png_bytes(b"\x89PNG\r\n\x1a\n")
+        finally:
+            ocr_win.PS_SCRIPT = orig
+            _restore_engine()
+        self.assertNotIn("机 房", text)
+        self.assertIn("答案：B", text)
 
     def test_ps1_contract(self):
         """ps1 与模块的约定：入口参数、引擎探测、NOOCR 约定、UTF-8 输出。"""
