@@ -48,11 +48,13 @@ SYSTEM_PROMPT = """你是机房运维（数据中心电气、暖通、弱电、�
 - answer：标准答案。单选题给单个字母如 "B"；多选题给连续字母如 "ABD"；判断题给 "正确" 或 "错误"；填空题多个空按顺序用竖线分隔如 "27|60"；问答题给分点陈述的参考答案。
 - analysis：解析。说明为什么是这个答案，讲清原理或依据，不要复述题干。
 - verdict：ok（现有答案正确）/ wrong（现有答案错误）/ unsure（拿不准）。用户没给现有答案时给 "filled"。
-- reason：判断依据，一到两句，写规范编号与条款、或电气/暖通原理。**记不清规范号就不要写编号**，只写原理，绝不编造条款号。
+- reason：判断理由，一到两句，写规范编号与条款、或电气/暖通原理。**记不清规范号就不要写编号**，只写原理，绝不编造条款号。
+- evidence：原文依据。**直接引用**支撑结论的原句——题干、选项、或给出的来源文字里的话，用引号括起来；来源里没有相关内容就写"来源中未见相关表述"。这是给人工核对用的引用，不是推理，不要写自己的话。
 - confidence：0 到 1 的小数，表示你对答案的把握。
 
 硬性规则：
 1. 题干本身有歧义、选项互相排斥不清、答案依赖缺失的图或表时，verdict 给 "unsure"，并在 reason 里说明缺什么——不要硬猜。
+   题干里明显混进了 "A. … B. …" 这类选项文字、或题干在句中突然断掉时，在 reason 里点明"疑似版式识别错误，建议核对原卷"——这比给一个看似合理的答案有用。
 2. 填空题的答案个数必须与题干中下划线空位的个数一致。
 3. 数值类答案（温度、时间、电压、电流、间距）按现行国家标准取值；若标准存在多个版本口径，在 reason 里点明按哪一版。
 4. 现有解析若与答案矛盾，要在 analysis 里给出正确解析，并在 reason 里指出矛盾点。
@@ -191,6 +193,9 @@ def parse_reply(content, q, kind=None):
 
     analysis = str(obj.get("analysis") or "").strip()[:2000]
     reason = str(obj.get("reason") or obj.get("why") or "").strip()[:400]
+    # 原文依据与判断理由分开存：一个是引用、一个是推理，混在一起就核对不了。
+    # 模型偶尔漏这个字段——不能因此把一条可能正确的建议作废，留空即可。
+    evidence = str(obj.get("evidence") or obj.get("quote") or "").strip()[:400]
     verdict = normalize_verdict(obj.get("verdict"), kind)
 
     if kind == KIND_CHECK:
@@ -214,6 +219,7 @@ def parse_reply(content, q, kind=None):
         "suggest_answer": answer,
         "suggest_analysis": analysis,
         "reason": reason,
+        "evidence": evidence,
         "confidence": conf,
         "valid": 0 if problem else 1,
         "problem": problem,
@@ -221,6 +227,19 @@ def parse_reply(content, q, kind=None):
 
 
 # ---------------------------------------------------------------- 提问
+
+def source_label(q):
+    """「文件名 第 N 页」。没有来源就返回空串——「未知文件 第 0 页」既没用，
+    还会诱导模型把"没看到原文"说成"原文这么写"。"""
+    name = (q.get("src_file") or "").strip()
+    if not name:
+        return ""
+    try:
+        page = int(q.get("src_page") or 0)
+    except (TypeError, ValueError):
+        page = 0
+    return name + (" 第 %d 页" % page if page > 0 else "")
+
 
 def build_messages(q, kind):
     """拼一次性提问。一题一个请求：题目短，分开问比批量问更准、失败也只丢一题。"""
@@ -234,6 +253,9 @@ def build_messages(q, kind):
             "%s. %s" % (o.get("key"), o.get("text")) for o in opts))
     cur = (q.get("answer") or "").strip()
     lines.append("【现有答案】" + (cur if cur else "（空，这题没有答案）"))
+    src = source_label(q)
+    if src:
+        lines.append("【题目来源】" + src + "（原件里的题，evidence 请引用这道题本身的原文）")
     ana = (q.get("analysis") or "").strip()
     if ana:
         lines.append("【现有解析】" + ana)

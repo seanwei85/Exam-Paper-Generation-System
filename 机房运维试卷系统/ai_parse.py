@@ -685,6 +685,9 @@ def extract_pdf_images(raw, cats=None, cfg=None, on_page=None):
             warns.append("第 %d 页没识别出来：%s" % (pg["page"], exc))
             continue
         items.extend(res["items"])
+        # 逐页路径知道这题来自第几页：记下来，审校时才能让人回原卷核对（P33）
+        for it in res["items"]:
+            it.setdefault("src_page", pg.get("page") or idx)
         for w in res["warnings"]:
             warns.append("第 %d 页：%s" % (pg["page"], w))
     if not items:

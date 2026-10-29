@@ -690,6 +690,10 @@ async function viewEditor(params){
   const subs = (curCat?curCat.subs:[]).map(s=>`<option value="${s.id}" ${q.sub_id==s.id?'selected':''}>${s.name}</option>`).join('');
   const types = STATE.types.map(t=>`<button type="button" class="${q.qtype===t.key?'on':''}" onclick="setType('${t.key}')">${t.name}</button>`).join('');
   const diffs = STATE.diffs.map(d=>`<button type="button" class="${q.diff===d.key?'on':''}" onclick="setDiff('${d.key}')">${d.name}</button>`).join('');
+  // 出处（P33）：告诉用户这题从哪份文件的第几页来，核对原卷不用再翻导入记录
+  const srcText = (q.src_file || '').trim()
+    ? (q.src_file + ((Number(q.src_page)||0) > 0 ? ' 第 ' + q.src_page + ' 页' : ''))
+    : '';
   return `
   <div class="page-head">
     <div><h1>${id?'编辑题目':'单题录入'}</h1><p>带 * 为必填；保存后可直接勾选继续录下一题</p></div>
@@ -710,6 +714,7 @@ async function viewEditor(params){
       <div class="f"><label>题干<em>*</em></label>
         <textarea id="eStem" oninput="onStemInput()" placeholder="题干支持多行；填空题用连续下划线表示空位，例如：机房温度应控制在 18~____ ℃。">${esc(q.stem)}</textarea>
         <div class="hint" id="stemHint"></div>
+        ${srcText?`<div class="hint" id="srcHint">来源：${esc(srcText)}</div>`:''}
       </div>
 
       <div class="f" id="optArea"></div>
@@ -846,6 +851,10 @@ function aiSuggestHtml(rec){
   const changed = sugA && sugA.replace(/\s/g,'') !== curA.replace(/\s/g,'');
   const meta = (rec.confidence ? '置信度 ' + Math.round(rec.confidence*100) + '%' : '模型未给置信度')
     + (rec.model ? ' · ' + rec.model : '');
+  // 出处：文件名 +（有页码才写页）。老数据没有来源，就别显示"未知文件 第 0 页"。
+  const srcName = (rec.src_file || '').trim();
+  const srcPage = Number(rec.src_page) || 0;
+  const srcLine = srcName ? (srcName + (srcPage > 0 ? ' 第 ' + srcPage + ' 页' : '')) : '';
   const tail = pend
     ? `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="primary" onclick="adoptAi(['answer','analysis'])" ${(rec.valid && (sugA||sugN))?'':'disabled'}>全部采纳</button>
@@ -867,7 +876,9 @@ function aiSuggestHtml(rec){
         <span style="${changed?'color:#a32d2d':''}">答案：${sugA?esc(sugA):'（未给出）'}</span><br>
         解析：${sugN?esc(sugN.slice(0,300)):'<span style="color:var(--text-3)">（未给出）</span>'}</div>
     </div>
-    ${rec.reason?`<div class="ai-reason"><b>依据：</b>${esc(rec.reason)}</div>`:''}
+    ${rec.evidence?`<div class="ai-reason"><b>原文依据：</b>${esc(rec.evidence)}</div>`:''}
+    ${srcLine?`<div class="hint" style="margin-top:6px">来源：${esc(srcLine)}</div>`:''}
+    ${rec.reason?`<div class="ai-reason"><b>判断理由：</b>${esc(rec.reason)}</div>`:''}
     ${rec.valid?'':`<div class="ai-bad">这条建议不能采纳：${esc(rec.problem||'格式不符')}</div>`}
     ${tail}`;
 }

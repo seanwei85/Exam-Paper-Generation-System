@@ -170,7 +170,7 @@ def connect():
 
 
 def _migrate_ai_review(cur):
-    """老库升级：给早期建的 ai_review 表补上 old_* 两列。
+    """老库升级：给早期建的 ai_review 表补上 old_* 两列（P27）与 evidence（P33）。
 
     CREATE TABLE IF NOT EXISTS 只保证"表在"，不会给已有表补列。正式库里已经躺着
     几百道题，不能靠删库重建来升级结构，所以这里显式 ALTER 一次。
@@ -178,9 +178,24 @@ def _migrate_ai_review(cur):
     cols = {r[1] for r in cur.execute("PRAGMA table_info(ai_review)")}
     if not cols:
         return
-    for name in ("old_answer", "old_analysis"):
+    for name in ("old_answer", "old_analysis", "evidence"):
         if name not in cols:
             cur.execute("ALTER TABLE ai_review ADD COLUMN %s TEXT NOT NULL DEFAULT ''" % name)
+
+
+def _migrate_source(cur):
+    """老库升级：题目表补「来源」两列（P33）。
+
+    不记来源，AI 建议就只剩"信或不信"；记下来才能让人回到原卷那一页核对。
+    老题没有来源是正常的，默认空串与 0，界面按"未知"处理。
+    """
+    cols = {r[1] for r in cur.execute("PRAGMA table_info(question)")}
+    if not cols:
+        return
+    if "src_file" not in cols:
+        cur.execute("ALTER TABLE question ADD COLUMN src_file TEXT NOT NULL DEFAULT ''")
+    if "src_page" not in cols:
+        cur.execute("ALTER TABLE question ADD COLUMN src_page INTEGER NOT NULL DEFAULT 0")
 
 
 def init_db():
@@ -214,6 +229,8 @@ def init_db():
             score       REAL,
             analysis    TEXT NOT NULL DEFAULT '',
             tags        TEXT NOT NULL DEFAULT '',
+            src_file    TEXT NOT NULL DEFAULT '',
+            src_page    INTEGER NOT NULL DEFAULT 0,
             created_at  TEXT NOT NULL,
             updated_at  TEXT NOT NULL,
             used_count  INTEGER NOT NULL DEFAULT 0,
@@ -267,6 +284,7 @@ def init_db():
             old_answer       TEXT NOT NULL DEFAULT '',
             old_analysis     TEXT NOT NULL DEFAULT '',
             reason           TEXT NOT NULL DEFAULT '',
+            evidence         TEXT NOT NULL DEFAULT '',
             confidence       REAL NOT NULL DEFAULT 0,
             model            TEXT NOT NULL DEFAULT '',
             valid            INTEGER NOT NULL DEFAULT 1,
@@ -282,6 +300,7 @@ def init_db():
     )
 
     _migrate_ai_review(cur)
+    _migrate_source(cur)
 
     cur.execute("SELECT COUNT(*) AS c FROM category")
     if cur.fetchone()["c"] == 0:
@@ -726,14 +745,21 @@ def save_question(payload):
             ),
         )
     else:
+        # 来源只在"新建"时写：题目被编辑过之后，出处仍然是它从哪来，
+        # 不能因为改过题干就把出处清空（P33）。
+        try:
+            src_page = int(payload.get("src_page") or 0)
+        except (TypeError, ValueError):
+            src_page = 0
         cur = conn.execute(
             """INSERT INTO question(cat_id, sub_id, qtype, diff, stem, options, answer,
-               blanks, score, analysis, tags, created_at, updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               blanks, score, analysis, tags, src_file, src_page, created_at, updated_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 payload["cat_id"], payload["sub_id"], qtype, payload["diff"], stem,
                 json.dumps(options, ensure_ascii=False), answer, blanks, score,
-                payload.get("analysis", ""), payload.get("tags", ""), ts, ts,
+                payload.get("analysis", ""), payload.get("tags", ""),
+                (payload.get("src_file") or "").strip()[:200], max(0, src_page), ts, ts,
             ),
         )
         qid = cur.lastrowid
@@ -765,11 +791,13 @@ def save_review(rec):
     try:
         conn.execute(
             """INSERT OR REPLACE INTO ai_review(qid, kind, verdict, suggest_answer,
-               suggest_analysis, reason, confidence, model, valid, problem, state, created_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,'pending',?)""",
+               suggest_analysis, reason, evidence, confidence, model, valid, problem,
+               state, created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,'pending',?)""",
             (rec.get("qid"), rec.get("kind") or "fill", rec.get("verdict") or "filled",
              rec.get("suggest_answer") or "", rec.get("suggest_analysis") or "",
-             rec.get("reason") or "", float(rec.get("confidence") or 0),
+             rec.get("reason") or "", rec.get("evidence") or "",
+             float(rec.get("confidence") or 0),
              rec.get("model") or "", 1 if rec.get("valid", 1) else 0,
              rec.get("problem") or "", now_str()))
         conn.commit()
@@ -792,7 +820,8 @@ def list_reviews(state="pending", limit=200):
         n = 200
     conn = connect()
     rows = conn.execute(
-        "SELECT r.*, q.stem, q.qtype, q.answer AS cur_answer, q.analysis AS cur_analysis "
+        "SELECT r.*, q.stem, q.qtype, q.answer AS cur_answer, q.analysis AS cur_analysis, "
+        "q.src_file, q.src_page "
         "FROM ai_review r JOIN question q ON q.id = r.qid "
         "WHERE r.state=? ORDER BY r.confidence DESC, r.qid DESC LIMIT ?",
         (state, n)).fetchall()
@@ -1072,10 +1101,12 @@ def _try_ocr_parse(raw, cats=None, default_type=None, use_ai=True, job=None):
         except ocr_win.OcrError:
             continue
         if t.strip():
-            texts.append(t.strip())
+            texts.append((pg.get("page") or i, t.strip()))
     if not texts:
         return None
-    joined = "\n".join(texts)
+    joined = "\n".join(t for _p, t in texts)
+    # 单页：整份文字就来自这一页，页号可以确定；多页合并后已分不清哪题在哪页，留 0
+    single_page = texts[0][0] if len(texts) == 1 else 0
     if use_ai and ai_parse.ready():
         progress_update(job, reset_eta=True, stage="把 OCR 文字交给 AI 整理…")
         try:
@@ -1084,12 +1115,16 @@ def _try_ocr_parse(raw, cats=None, default_type=None, use_ai=True, job=None):
             res = None
         if res and res.get("items"):
             res["by"] = "local-ocr+ai"
+            for it in res["items"]:
+                it.setdefault("src_page", single_page)
             return res
     try:
         res = importer.parse_text(joined, cats=cats, default_type=default_type)
     except importer.ImportError_:
         return None
     res["by"] = "local-ocr"
+    for it in res["items"]:
+        it.setdefault("src_page", single_page)
     return res
 
 
@@ -1655,6 +1690,7 @@ class Handler(BaseHTTPRequestHandler):
                     progress_finish(job, failure)
             elif path == "/api/import/commit":
                 items = payload.get("items") or []
+                src_file = (payload.get("filename") or "").strip()
                 conn = connect()
                 imported, failed, errors = 0, 0, []
                 for it in items:
@@ -1670,6 +1706,10 @@ class Handler(BaseHTTPRequestHandler):
                         "stem": it.get("stem"), "options": it.get("options") or [],
                         "answer": it.get("answer"), "analysis": it.get("analysis") or "",
                         "tags": it.get("tags") or "",
+                        # 出处（P33）：文件名来自这次导入，页码只有逐页解析的路径知道，
+                        # 不知道就写 0，界面按"只到文件级"显示。
+                        "src_file": (it.get("src_file") or src_file),
+                        "src_page": it.get("src_page") or 0,
                     })
                     if res.get("ok"):
                         imported += 1
