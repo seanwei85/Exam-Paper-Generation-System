@@ -145,6 +145,19 @@ class P29Pause(RenderCase):
         self.assertTrue(ch.eval("!document.querySelector('.ai-prog')"))
         self.assertFalse(ch.eval("document.getElementById('aiBtn').disabled"))
 
+    def test_running_msg_reports_own_progress_not_serverside_1of1(self):
+        """正在跑时只显示前端自己的累计进度，不拼服务端的"第 1/1 题"。
+
+        回归：逐题请求时服务端每次单算"第 1/1 题"，前端再拼一次累计进度，
+        只勾一题就会拼出"AI 审校第 1/1 题（已完成 1/1）"这种自相矛盾的怪话。
+        """
+        ch, _ = self.start_round(1)
+        ch.wait("AI_RUN.active===true", timeout=10)
+        msg = ch.eval("document.querySelector('.ai-prog .msg').textContent")
+        self.assertNotIn("第 1/1", msg, "不该把单请求的批次计数拼进累计进度")
+        self.assertNotIn("第 ", msg, "审校进度不该出现服务端的批次计数")
+        self.assertIn("已完成 0/1", ch.eval("document.querySelector('.ai-prog .msg').textContent"))
+
 
 if __name__ == "__main__":
     unittest.main()

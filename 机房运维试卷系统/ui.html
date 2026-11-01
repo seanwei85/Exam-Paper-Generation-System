@@ -1001,9 +1001,10 @@ function aiRenderBar(){
     pauseBtn.textContent = '继续';
     pauseBtn.disabled = false;
   }else{
-    msg.textContent = AI_RUN.stage
-      ? AI_RUN.stage + '（已完成 ' + AI_RUN.done + '/' + n + '）…'
-      : 'AI 正在审校，已完成 ' + AI_RUN.done + '/' + n + ' 题…';
+    // 审校是前端逐题请求、自己维护 done/n，服务端 stage 只是"第 1/1 题"
+    // （单次请求的批次是 1 题），拼进来会和已累计进度打架，变成
+    // "第 1/1 题（已完成 1/1）"这种怪话。这里只报自己统计的进度。
+    msg.textContent = 'AI 正在审校，已完成 ' + AI_RUN.done + '/' + n + ' 题…';
     pauseBtn.textContent = '暂停';
     pauseBtn.disabled = false;
   }
