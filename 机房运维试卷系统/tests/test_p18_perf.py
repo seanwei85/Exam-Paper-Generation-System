@@ -66,7 +66,7 @@ class PerfCase(BaseCase):
 
     def cfg(self):
         return {
-            "mode": "auto", "title": "压测卷", "unit": "ZJLab", "duration": 45,
+            "mode": "auto", "title": "压测卷", "unit": "MOLab", "duration": 45,
             "rows": [
                 {"qtype": "single", "enabled": True, "count": 30, "score": 1},
                 {"qtype": "multi", "enabled": True, "count": 10, "score": 2},

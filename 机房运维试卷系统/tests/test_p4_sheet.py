@@ -55,7 +55,7 @@ class P4SheetData(BaseCase):
 
     def test_header_fields(self):
         p = self.paper
-        self.assertRegex(p["no"], r"^ZJLab-\d{8}-\d{3}$")
+        self.assertRegex(p["no"], r"^MOLab-\d{8}-\d{3}$")
         self.assertTrue(p["title"])
         self.assertEqual(p["duration"], 45)
         self.assertTrue(p["created_at"])

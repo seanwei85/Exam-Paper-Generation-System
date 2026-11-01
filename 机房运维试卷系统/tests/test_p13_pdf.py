@@ -362,7 +362,7 @@ p{margin:0}
   @bottom-center{content:"第 " counter(page) " 页  共 " counter(pages) " 页";font-size:9pt}}
 </style></head><body>
 <p style="text-align:center;font-size:17px">机房运维月度考核试卷</p>
-<p style="text-align:center">单位：某某数据中心　编号：ZJLab-20261025-001</p>
+<p style="text-align:center">单位：某某数据中心　编号：MOLab-20261025-001</p>
 <p>一、单项选择题（每题 2 分）</p>
 %s
 </body></html>""" % "".join(
@@ -404,7 +404,7 @@ class PdfLongExam(PdfRealExam):
         items = self.parse(self.print_pdf(LONG_EXAM_HTML), "月度考核.pdf")["items"]
         for it in items[:2]:
             self.assertNotIn("机房运维月度考核试卷", it["stem"])
-            self.assertNotIn("ZJLab-20261025-001", it["stem"])
+            self.assertNotIn("MOLab-20261025-001", it["stem"])
 
 
 class PdfFurniture(BaseCase):

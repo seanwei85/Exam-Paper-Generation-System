@@ -102,7 +102,7 @@ class P3Build(BaseCase):
         r2 = self.pe.build(self.base_cfg())
         self.assertTrue(r1["ok"] and r2["ok"])
         for no in (r1["no"], r2["no"]):
-            self.assertRegex(no, r"^ZJLab-\d{8}-\d{3}$")
+            self.assertRegex(no, r"^MOLab-\d{8}-\d{3}$")
         self.assertNotEqual(r1["no"], r2["no"])
         self.assertEqual(int(r2["no"][-3:]), int(r1["no"][-3:]) + 1)
 

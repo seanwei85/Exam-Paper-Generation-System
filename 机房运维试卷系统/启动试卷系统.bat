@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-title ZJLab Exam System
+title MOLab Exam System
 
 rem ---------------------------------------------------------------------
 rem If a port is already listening, do NOT just open the browser and exit.

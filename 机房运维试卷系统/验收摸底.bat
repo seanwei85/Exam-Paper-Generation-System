@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title ZJLab Import Probe
+title MOLab Import Probe
 set "PYTHONIOENCODING=utf-8"
 
 rem Default folder is ..\samples. You can also drag a folder onto this bat.

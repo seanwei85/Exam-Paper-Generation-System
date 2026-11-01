@@ -126,7 +126,7 @@ DIFF_POINTS = {
 
 DEFAULT_SETTINGS = {
     "unit_name": "XX 数据中心",
-    "paper_prefix": "ZJLab",
+    "paper_prefix": "MOLab",
     "duration": "45",
     "score_single": "1",
     "score_multi": "2",
@@ -1493,7 +1493,7 @@ def maintenance(action):
 # ---------------------------------------------------------------- HTTP
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ZJLabExam/1.0"
+    server_version = "MOLabExam/1.0"
 
     def log_message(self, fmt, *args):
         logging.info("%s - %s", self.address_string(), fmt % args)

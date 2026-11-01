@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-title Stop ZJLab Exam System
+title Stop MOLab Exam System
 
 set FOUND=0
 for %%p in (8765 8766 8767 8768 8769 8770 8771 8772 8773 8774) do (

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img">
+  <title>机房运维试卷系统</title>
+  <desc>16/24 像素专用简化版：去掉对勾徽章、加粗纸面横线</desc>
+  <rect width="128" height="128" rx="28" fill="#114A8F"/>
+  <rect x="42" y="18" width="60" height="86" rx="8" fill="#8FBEEB"/>
+  <rect x="26" y="26" width="62" height="86" rx="8" fill="#FFFFFF"/>
+  <path d="M40 50 H74 M40 68 H74 M40 86 H60" fill="none" stroke="#7FB3E8"
+        stroke-width="8" stroke-linecap="round"/>
+</svg>

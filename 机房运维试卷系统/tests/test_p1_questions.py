@@ -25,7 +25,7 @@ class P0DataLayer(BaseCase):
         conn = self.core.connect()
         s = self.core.all_settings(conn)
         conn.close()
-        self.assertEqual(s["paper_prefix"], "ZJLab")
+        self.assertEqual(s["paper_prefix"], "MOLab")
         self.assertEqual(s["duration"], "45")
 
 

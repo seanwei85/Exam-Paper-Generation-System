@@ -1,4 +1,6 @@
-# 机房运维试卷系统
+<img src="机房运维试卷系统/assets/logo-128.png" width="72" align="left" hspace="14" alt="logo">
+
+# 机房运维试卷系统｜MOLab
 
 面向机房运维团队的**单机版题库与自动组卷系统**：把散落在 Word / Excel / PDF / 文本里的运维试题导入题库，自动识别题型与选项，按配额组卷、配平分数、一键打印。
 

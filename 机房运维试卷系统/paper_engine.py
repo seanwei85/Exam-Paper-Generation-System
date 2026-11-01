@@ -637,7 +637,7 @@ def build(cfg):
         picked.sort(key=lambda q: (order[q["qtype"]], DIFFS.index(q["diff"]), q["id"]))
 
         settings = core.all_settings(conn)
-        prefix = core.get_setting("paper_prefix", conn) or "ZJLab"
+        prefix = core.get_setting("paper_prefix", conn) or "MOLab"
         no = _paper_no(conn, prefix)
         ts = core.now_str()
 

@@ -108,7 +108,7 @@ class BaseCase(unittest.TestCase):
         cfg = {
             "mode": "auto",
             "title": "测试卷",
-            "unit": "ZJLab",
+            "unit": "MOLab",
             "duration": 45,
             "rows": [
                 {"qtype": "single", "enabled": True, "count": 8, "score": 1},

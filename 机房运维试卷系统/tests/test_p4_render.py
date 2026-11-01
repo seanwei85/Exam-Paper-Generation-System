@@ -35,7 +35,7 @@ class P4Render(RenderCase):
             {"qtype": "qa", "enabled": True, "count": 2, "score": 12},
         ]
         cfg["title"] = "机房运维上岗考试"
-        cfg["unit"] = "ZJLab 数据中心"
+        cfg["unit"] = "MOLab 数据中心"
         cfg["diff_target"] = 10
         cfg["rules"] = {"avoid_recent": {"enabled": False, "papers": 0},
                         "must": {"enabled": True, "ids": [self.fill_id]},
@@ -62,7 +62,7 @@ class P4Render(RenderCase):
         self.assertIn("二、多项选择题", html)
         self.assertIn("姓名", html)
         self.assertIn("工号", html)
-        self.assertIn("ZJLab 数据中心", html)
+        self.assertIn("MOLab 数据中心", html)
         self.assertIn("共 2 空", html, "填空题未标注空数")
         self.assertIn("标准答案", html)
 
