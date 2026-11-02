@@ -89,6 +89,17 @@ class P39ScopeStatic(unittest.TestCase):
         body = func_body(self.ui, "function isAdmin(")
         self.assertIn("if(!AUTH.on) return true", body, "单机模式应视为管理员")
 
+    def test_position_names_refreshed_after_categories_load(self):
+        """岗位名要靠分类树翻译，必须在 loadState 之后重刷一遍。
+
+        首次登录时 applyRoBar / renderWhoBox 跑在 loadState 之前，那一刻
+        STATE.cats 还是空的，页面上会留下「岗位：#1 · #2」。截图核对时一眼看见，
+        代码读起来却毫无问题——所以固化成用例。
+        """
+        body = func_body(self.ui, "async function loadState(")
+        self.assertIn("applyRoBar()", body, "loadState 之后没有重刷只读条")
+        self.assertIn("renderWhoBox()", body, "loadState 之后没有重刷侧栏用户块")
+
 
 class AuthResetMixin:
     """把临时库恢复成"单机、无账号、无会话"。类共享库，每个用例都要清。"""
@@ -302,6 +313,24 @@ class P39ScopeRender(AuthResetMixin, RenderCase):
             self.assertIn(good, txt, "管理员应保留「%s」" % good)
         self.assertNotIn("我的账号", txt, "管理员版不需要「我的账号」这张卡")
         self.assertIn("用户管理", ch.eval("document.getElementById('nav').textContent"))
+
+    def test_position_shows_category_name_not_id(self):
+        """首屏的岗位不能显示成「岗位：#1」。
+
+        与静态那条互补：静态只证明调用在，这条证明"刷新后确实翻译成了中文名"。
+        """
+        self.set_multi()
+        self.make_admin("boss")
+        self.make_regular(cats=[1])
+        ch = self.nav("dashboard",
+                      "document.getElementById('loginRoot') && !document.getElementById('loginRoot').hidden")
+        self.login_ui(ch, "tec")
+        ch.wait("!!document.getElementById('roText')", timeout=25)
+        ro = ch.eval("document.getElementById('roText').textContent")
+        self.assertIn("电气", ro, "只读条里的岗位应是分类名：%s" % ro)
+        self.assertNotIn("#1", ro, "岗位名退化成了分类 ID：%s" % ro)
+        who = ch.eval("document.getElementById('whoBox').textContent")
+        self.assertNotIn("#1", who, "侧栏用户块里的岗位也应是分类名：%s" % who)
 
     def test_nav_hides_user_admin_from_regular(self):
         self.set_multi()

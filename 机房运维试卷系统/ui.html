@@ -423,6 +423,11 @@ async function loadState(){
     const r = await API.get('/api/ai/config');
     STATE.ai = (r && r.config) || null;
   }catch(e){ STATE.ai = null; }
+  // 岗位名要靠分类树翻译：首次登录时 applyRoBar / renderWhoBox 跑在 loadState 之前，
+  // 那一刻 STATE.cats 还是空的，页面上会留下「岗位：#1 · #2」这种给用户看的天书。
+  // 分类一到就重刷这两处（两者内部都自带"没登录就收起"的守卫，单机模式调用无副作用）。
+  applyRoBar();
+  renderWhoBox();
 }
 
 function go(key){ location.hash = key; }
@@ -2471,7 +2476,7 @@ function settingsForRegular(){
     : '<span style="color:var(--text-3);font-weight:400">未分配岗位，请联系管理员</span>';
   return `<div class="page-head"><div><h1>系统设置</h1><p>账号信息与使用说明</p></div></div>
   <div class="notice" style="margin-bottom:14px">单位信息、分类目录、数据备份与 AI 接口由管理员统一维护。</div>
-  <div class="card">
+  <div class="card" style="max-width:780px">
     <div class="card-h"><b>我的账号</b></div>
     <div class="card-b">
       <div class="pre-item"><span>姓名</span><b>${esc(u.name || '—')}</b></div>
