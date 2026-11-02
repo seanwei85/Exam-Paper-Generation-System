@@ -13,6 +13,10 @@ output/
 .build/
 src/
 
+# OCR 调试截图：仅本地临时产物（不含敏感内容），不进版本库
+_ocr_p1.png
+_ocr_p2.png
+
 # ===== 助手工作台内部数据 =====
 .workbuddy/
 
