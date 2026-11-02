@@ -44,7 +44,13 @@ COOKIE_NAME = "molab_session"
 # 这不是开发者洁癖：软件是单机常驻的，改了代码却忘了重启，
 # 界面（磁盘上的 ui.html，刷新即生效）是新的、后端（进程内存里）是旧的，
 # 表现就是"按钮点下去报 not found"，从界面上完全看不出原因。
-CODE_FILES = ("server.py", "ui.html", "auth.py", "auth_http.py", "importer.py",
+#
+# 表里只放**后端**文件（.py）。ui.html 故意不放：
+#   它走 Cache-Control: no-store 返回，刷新一定拿到磁盘上的新版，不需要重启；
+#   把它算进来会让"只改了界面"也弹一条"请重启"，而重启对界面毫无作用。
+#   真正的危险是"界面加了新按钮、后端还是旧进程"，那种情形必然伴随某个 .py 变化，
+#   照样会被这张表抓到。
+CODE_FILES = ("server.py", "auth.py", "auth_http.py", "importer.py",
               "ai_parse.py", "ai_review.py", "paper_engine.py", "dupe.py",
               "pdftext.py", "legacy.py", "ole.py")
 

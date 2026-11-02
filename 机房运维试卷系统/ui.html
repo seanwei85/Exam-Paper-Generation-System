@@ -291,6 +291,17 @@ td.stem .opt-line{font-size:12px;color:var(--text-2);margin-top:2px;white-space:
 .login-card .lg-tip{font-size:12px;color:var(--text-3);margin-top:14px;line-height:1.7}
 .login-card .lg-tip code{background:#f3f5f8;padding:1px 5px;border-radius:3px}
 /* 只读条：登录了但不能写时常驻顶部，必须说清"为什么不能写"，否则用户只看到点了没反应 */
+/* 侧栏底部的「当前用户 + 退出」。必须常驻：退出登录原先只放在只读条里，
+   而只读条只在"管理员被挡住"或"普通用户"时才出现，管理员正常使用时找不到退出入口。 */
+.who-box{display:flex;align-items:center;gap:8px;margin:0 10px 8px;padding:9px 10px;
+  border:1px solid var(--line);border-radius:9px;background:#fafbfc;font-size:12.5px}
+.who-box[hidden]{display:none}
+.who-box .wb-main{flex:1;min-width:0}
+.who-box .wb-name{display:block;font-weight:600;color:var(--text);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.who-box .wb-role{display:block;font-size:11.5px;color:var(--text-3);margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who-box button{padding:3px 9px;font-size:12px;flex:none}
 .ro-bar{position:fixed;left:0;right:0;top:0;z-index:290;display:flex;align-items:center;gap:10px;padding:8px 16px;background:#eef4ff;border-bottom:1px solid #cfdff8;color:#1e3f7a;font-size:13px}
 .ro-bar[hidden]{display:none}
 .ro-bar b{color:#12305e}
@@ -337,6 +348,7 @@ body.has-ro{padding-top:44px}
       </div>
     </div>
     <nav class="nav" id="nav"></nav>
+    <div class="who-box" id="whoBox" hidden></div>
     <div class="side-foot">
       数据文件<br><code id="dataPath">data/library.db</code>
     </div>
@@ -2639,6 +2651,7 @@ async function bootAuth(){
     AUTH.on = false;
     if(loginRoot) loginRoot.hidden = true;
     if(layout) layout.style.display = '';
+    renderWhoBox();
     return true;
   }
   AUTH.on = !!w.multi_user;
@@ -2649,6 +2662,7 @@ async function bootAuth(){
   if(!AUTH.on){
     if(loginRoot) loginRoot.hidden = true;
     if(layout) layout.style.display = '';
+    renderWhoBox();
     return true;
   }
   if(AUTH.needSetup){ showSetupAdmin(); return false; }
@@ -2656,6 +2670,7 @@ async function bootAuth(){
   if(loginRoot) loginRoot.hidden = true;
   if(layout) layout.style.display = '';
   applyRoBar();
+  renderWhoBox();
   return true;
 }
 
@@ -2664,6 +2679,8 @@ function showLogin(msg){
   const root = document.getElementById('loginRoot');
   const layout = document.querySelector('.layout');
   if(layout) layout.style.display = 'none';
+  AUTH.user = null;
+  renderWhoBox();
   if(!root) return;
   root.hidden = false;
   const logo = document.querySelector('.brand-logo');
@@ -2708,6 +2725,7 @@ function showSetupAdmin(){
   const root = document.getElementById('loginRoot');
   const layout = document.querySelector('.layout');
   if(layout) layout.style.display = 'none';
+  renderWhoBox();
   if(!root) return;
   root.hidden = false;
   const logo = document.querySelector('.brand-logo');
@@ -2763,6 +2781,25 @@ async function doLogout(){
   showLogin('已退出登录');
 }
 
+/** 侧栏底部的"当前是谁 + 退出登录"。
+ *  必须常驻：只读条只在特定状态下出现，靠它退出会让人找不到入口，
+ *  也会让人分不清"现在到底是谁在操作"。 */
+function renderWhoBox(){
+  const box = document.getElementById('whoBox');
+  if(!box) return;
+  if(!AUTH.on || !AUTH.user){ box.hidden = true; box.innerHTML = ''; return; }
+  const u = AUTH.user;
+  const names = (u.cats || []).map(catName).filter(Boolean);
+  let role;
+  if(u.is_admin) role = '管理员 · 全部分类';
+  else if(names.length) role = '岗位：' + names.join('、');
+  else role = '未分配岗位';
+  box.hidden = false;
+  box.innerHTML = '<div class="wb-main"><span class="wb-name">' + esc(u.name) + '</span>'
+    + '<span class="wb-role">' + esc(role) + '</span></div>'
+    + '<button onclick="doLogout()">退出</button>';
+}
+
 /** 顶部状态条。两种措辞必须分开：
  *  管理员被普通用户挡住 -> 说他只读、能看能组卷；
  *  普通用户 -> 说清他能改哪几个分类，免得以为软件坏了。 */
@@ -2812,6 +2849,7 @@ async function pollAuth(){
   AUTH.locks = w.locks || [];
   if(!AUTH.user){ showLogin('登录已过期，请重新登录'); return; }
   applyRoBar();
+  renderWhoBox();
 }
 // ====JS1-END====
 

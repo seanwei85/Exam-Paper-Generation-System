@@ -63,6 +63,38 @@ class P35UiStatic(unittest.TestCase):
         self.assertIn("multiUserCard()", self.ui, "设置页没有多人协作卡片")
         self.assertIn("saveMultiUser(", self.ui, "多人协作开关没有保存函数")
 
+    def test_logout_entry_is_always_reachable(self):
+        """退出登录必须常驻在侧栏。
+
+        真踩过：退出按钮只写在只读条里，而只读条只在"管理员被普通用户挡住"
+        或"普通用户"时出现。管理员正常使用时整条隐藏，界面上找不到任何退出入口，
+        于是"我建了账号怎么从来没要我登录"——因为一直在登录态里出不来。
+        """
+        self.assertIn('id="whoBox"', self.ui, "侧栏缺少当前用户块")
+        self.assertIn("function renderWhoBox(", self.ui, "缺少用户块渲染函数")
+        # 登录成功后必须渲染一次，否则块是空的
+        seg = self.ui[self.ui.find("async function bootAuth("):]
+        seg = seg[:seg.find("\n}\n")]
+        self.assertIn("renderWhoBox()", seg, "bootAuth 成功后没有渲染当前用户")
+        # 未登录/初始化页要收起来，避免登录页背后透出用户名
+        for fn in ("function showLogin(", "function showSetupAdmin("):
+            body = self.ui[self.ui.find(fn):]
+            body = body[:body.find("root.innerHTML")]
+            self.assertIn("renderWhoBox()", body, "%s 没有收起用户块" % fn)
+
+    def test_stale_check_ignores_ui_html(self):
+        """ui.html 不该算进"代码过期需重启"。
+
+        页面走 no-store 返回，刷新一定拿到新版；把它算进来会让每次改界面
+        都弹一条"请双击停止/启动.bat"，而重启对界面毫无作用。
+        """
+        with open(os.path.join(os.path.dirname(HERE), "server.py"), encoding="utf-8") as f:
+            src = f.read()
+        start = src.find("CODE_FILES = (")
+        block = src[start:src.find(")", start) + 1]
+        self.assertNotIn("ui.html", block, "ui.html 不应列入重启检测")
+        self.assertIn("server.py", block, "后端文件必须在检测范围内")
+
     def test_multi_user_fields_have_unique_ids(self):
         """多人协作的三个控件不能和"单位与默认值"撞 id。
 
