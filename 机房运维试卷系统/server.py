@@ -23,6 +23,8 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+import auth  # noqa: E402  P35 多用户与岗位授权
+import auth_http  # noqa: E402  P35 鉴权的 HTTP 层编排
 import dupe  # noqa: E402  与本文件同目录，纯标准库
 DATA_DIR = os.path.join(BASE, "data")
 BACKUP_DIR = os.path.join(DATA_DIR, "backup")
@@ -33,15 +35,18 @@ LOG_PATH = os.path.join(DATA_DIR, "app.log")
 DEFAULT_PORT = 8765
 PORT_RANGE = 20
 
-APP_VERSION = "V1.12"
+APP_VERSION = "V1.14"
+
+COOKIE_NAME = "molab_session"
 
 # 判断"当前进程跑的是不是最新代码"：启动那一刻给源码拍个时间戳快照，
 # 之后每次问就把磁盘上的时间跟快照比。比快照新 = 进程里还是老代码。
 # 这不是开发者洁癖：软件是单机常驻的，改了代码却忘了重启，
 # 界面（磁盘上的 ui.html，刷新即生效）是新的、后端（进程内存里）是旧的，
 # 表现就是"按钮点下去报 not found"，从界面上完全看不出原因。
-CODE_FILES = ("server.py", "ui.html", "importer.py", "ai_parse.py", "ai_review.py",
-              "paper_engine.py", "dupe.py", "pdftext.py", "legacy.py", "ole.py")
+CODE_FILES = ("server.py", "ui.html", "auth.py", "auth_http.py", "importer.py",
+              "ai_parse.py", "ai_review.py", "paper_engine.py", "dupe.py",
+              "pdftext.py", "legacy.py", "ole.py")
 
 
 def code_mtime(base=None):
@@ -134,6 +139,9 @@ DEFAULT_SETTINGS = {
     "score_fill_blank": "1",
     "score_qa": "10",
     "backup_keep": "30",
+    "multi_user": "0",
+    "session_minutes": "30",
+    "bind_lan": "0",
 }
 
 DEFAULT_CATEGORIES = [
@@ -317,6 +325,9 @@ def init_db():
         cur.execute("INSERT OR IGNORE INTO setting(key, value) VALUES(?,?)", (k, v))
 
     conn.commit()
+
+    # 多用户表（P35）：单用户模式下建表也无害，只是不启用登录
+    auth.init_schema(conn)
 
     cur.execute("SELECT COUNT(*) AS c FROM question")
     if cur.fetchone()["c"] == 0:
@@ -548,6 +559,15 @@ def export_questions(params):
     import importer
     conn = connect()
     where, args = _q_where(params)
+    # 导出是"全量拿走"的入口，未授权分类必须在这里也挡住（FR-MU-05）。
+    allow = params.get("allowed_cats")
+    if allow is not None:
+        allow = [int(x) for x in allow]
+        if not allow:
+            conn.close()
+            return importer.export_xlsx([]), 0
+        where += " AND cat_id IN (%s)" % ",".join(["?"] * len(allow))
+        args = list(args) + allow
     rows = conn.execute(
         f"SELECT * FROM question WHERE {where} ORDER BY cat_id, qtype, id", args).fetchall()
     cats = {c["id"]: c["name"] for c in categories_tree(conn)}
@@ -571,6 +591,17 @@ def list_questions(params):
     conn = connect()
     settings = all_settings(conn)
     where, args = _q_where(params)
+    # 授权范围内收窄（FR-MU-05）：界面藏掉分类只是观感，列表接口必须自己限定，
+    # 否则改一个查询参数就能翻到别人的题。None = 不限（管理员/单用户）。
+    allow = params.get("allowed_cats")
+    if allow is not None:
+        allow = [int(x) for x in allow]
+        if not allow:
+            conn.close()
+            return {"ok": True, "items": [], "total": 0, "page": 1, "size": 0,
+                    "allowed_cats": []}
+        where += " AND cat_id IN (%s)" % ",".join(["?"] * len(allow))
+        args = list(args) + allow
 
     sort = params.get("sort") or "id_desc"
     order = {
@@ -1512,6 +1543,83 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _cookie_token(self):
+        raw = self.headers.get("Cookie") or ""
+        for part in raw.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == COOKIE_NAME:
+                return v.strip()
+        return ""
+
+    def _me(self, conn):
+        on = auth_http.is_on(get_setting)
+        if not on:
+            return {"id": 0, "name": "本机用户", "is_admin": 1, "_single": True}, "", False
+        token = self._cookie_token()
+        return auth.session_user(conn, token, auth_http.minutes(get_setting)), token, True
+
+    def _gate(self, conn, cat_ids):
+        """写题库的统一闸门。返回 None 表示放行。"""
+        user, token, on = self._me(conn)
+        if not on:
+            return None
+        return auth_http.gate(conn, user, token, cat_ids)
+
+    def _require_login(self, conn):
+        """只读接口的登录要求（需求 §8 已确认）。
+
+        FR-MU-04 要的是"未授权分类不出现"，而分类树、统计、题库列表都是只读接口；
+        不登录就能拿到全量分类，界面藏了也是白藏。
+        """
+        user, _token, on = self._me(conn)
+        if not on:
+            return None
+        if not user:
+            return {"ok": False, "error": "请先登录", "need_login": True}
+        return None
+
+    def _scope_payload(self, payload):
+        """给组卷参数注入授权范围（FR-MU-06）。
+
+        管理员与单用户模式注入 None，等于不限；普通用户注入其授权分类，
+        引擎据此收窄候选池与分类树。走注入而不是让引擎查库，
+        是为了让 paper_engine 保持"只认配置"的老契约。
+        """
+        conn = connect()
+        try:
+            user, _token, on = self._me(conn)
+            if not on:
+                cats = None
+            elif not user:
+                cats = []
+            elif user.get("is_admin"):
+                cats = None
+            else:
+                cats = auth.get_user_cats(conn, user.get("id"))
+        finally:
+            conn.close()
+        payload["allowed_cats"] = cats
+        return payload
+
+    def _admin_only(self, conn, what):
+        """结构级/破坏性操作只留给管理员。
+
+        分类增删改、清库、恢复备份不属于"某个分类的编辑"，一旦放开就等于
+        一个岗位能改别人的目录甚至抹掉全库，所以这里不看分类授权、只看身份。
+        管理员在有普通用户在线时仍是只读（FR-MU-12），这里一并挡住。
+        """
+        user, _token, on = self._me(conn)
+        if not on:
+            return None
+        if not user:
+            return {"ok": False, "error": "请先登录后再%s" % what, "need_login": True}
+        if not user.get("is_admin"):
+            return {"ok": False, "error": "只有管理员能%s" % what}
+        if auth.online_regular_exists(conn, user.get("id")):
+            return {"ok": False,
+                    "error": "有普通用户在线，管理员当前为只读（可查看、可组卷）"}
+        return None
+
     def _body(self):
         length = int(self.headers.get("Content-Length") or 0)
         if not length:
@@ -1522,20 +1630,75 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return {}
 
+    # 不需要登录的只读接口：探活、登录态查询、版本自检。
+    # 其余 /api 在 multi_user 开启时一律要求会话（需求 §8 已确认）：
+    # 分类树、统计、题库列表本身就是"看得见什么"的入口，不拦就没有隔离可言。
+    OPEN_PATHS = ("/api/ping", "/api/whoami", "/api/version")
+
+    def _read_guard(self, path, params):
+        """只读守卫。返回响应体表示拦截，None 表示放行。
+
+        顺带把授权范围塞进 params，让下游的列表/导出接口自己收窄。
+        """
+        if not path.startswith("/api/") or path in self.OPEN_PATHS:
+            params["allowed_cats"] = None
+            return None
+        conn = connect()
+        try:
+            user, _token, on = self._me(conn)
+            if not on:
+                params["allowed_cats"] = None
+                return None
+            if not user:
+                return {"ok": False, "error": "请先登录", "need_login": True}
+            if user.get("is_admin"):
+                params["allowed_cats"] = None
+            else:
+                params["allowed_cats"] = auth.get_user_cats(conn, user.get("id"))
+            return None
+        finally:
+            conn.close()
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
         try:
+            blocked = self._read_guard(path, params)
+            if blocked:
+                self._send(200, blocked)
+                return
             if path in ("/", "/index.html", "/ui.html"):
                 with open(UI_PATH, "rb") as fh:
                     self._send(200, fh.read(), "text/html; charset=utf-8")
             elif path == "/api/ping":
                 self._send(200, {"ok": True, "app": "zjlab-exam"})
+            elif path == "/api/whoami":
+                conn = connect()
+                try:
+                    user, _tok, on = self._me(conn)
+                    self._send(200, auth_http.whoami(conn, user, on))
+                finally:
+                    conn.close()
+            elif path == "/api/users":
+                conn = connect()
+                try:
+                    user, _tok, _on = self._me(conn)
+                    if user and (user.get("is_admin") or user.get("_single")):
+                        self._send(200, auth_http.list_users(conn, user))
+                    else:
+                        self._send(200, {"ok": False, "error": "只有管理员能管理用户"})
+                finally:
+                    conn.close()
             elif path == "/api/state":
                 conn = connect()
+                cats = categories_tree(conn)
+                allow = params.get("allowed_cats")
+                if allow is not None:
+                    allow_set = set(int(x) for x in allow)
+                    cats = [c for c in cats if int(c["id"]) in allow_set]
                 data = {
-                    "categories": categories_tree(conn),
+                    "categories": cats,
                     "settings": all_settings(conn),
                     "stats": stats(conn),
                     "types": [{"key": t, "name": TYPE_NAMES[t], "points": DIFF_POINTS[t]} for t in TYPES],
@@ -1559,9 +1722,25 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif path.startswith("/api/questions/"):
                 qid = int(path.rsplit("/", 1)[-1])
-                self._send(200, get_question(qid))
+                data = get_question(qid)
+                allow = params.get("allowed_cats")
+                if allow is not None and data.get("ok"):
+                    q = data.get("question") or {}
+                    if int(q.get("cat_id") or 0) not in [int(x) for x in allow]:
+                        self._send(200, {"ok": False, "error": "该题目不在你的岗位授权内"})
+                        return
+                self._send(200, data)
             elif path == "/api/categories":
-                self._send(200, {"categories": categories_tree()})
+                conn = connect()
+                try:
+                    cats = categories_tree(conn)
+                finally:
+                    conn.close()
+                allow = params.get("allowed_cats")
+                if allow is not None:
+                    keep = set(int(x) for x in allow)
+                    cats = [c for c in cats if int(c["id"]) in keep]
+                self._send(200, {"categories": cats})
             elif path == "/api/import/logs":
                 self._send(200, {"logs": list_import_logs(params.get("limit"))})
             elif path == "/api/import/progress":
@@ -1622,12 +1801,62 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         payload = self._body()
         try:
-            if path == "/api/questions":
-                self._send(200, create_question(payload))
+            if path == "/api/login":
+                conn = connect()
+                try:
+                    res, token = auth_http.do_login(
+                        conn, payload, auth_http.minutes(get_setting))
+                finally:
+                    conn.close()
+                headers = None
+                if token:
+                    headers = {"Set-Cookie": "%s=%s; Path=/; HttpOnly; SameSite=Lax" % (COOKIE_NAME, token)}
+                self._send(200, res, headers=headers)
+            elif path == "/api/logout":
+                conn = connect()
+                try:
+                    auth.logout(conn, self._cookie_token())
+                finally:
+                    conn.close()
+                self._send(200, {"ok": True},
+                           headers={"Set-Cookie": "%s=; Path=/; Max-Age=0" % COOKIE_NAME})
+            elif path == "/api/users":
+                conn = connect()
+                try:
+                    user, _tok, on = self._me(conn)
+                    if not on:
+                        user = {"is_admin": 1, "_single": True, "name": "本机用户"}
+                    # 首次初始化（FR-MU-08）：多用户开着、库里一个账号都没有时，
+                    # 允许匿名调用 setup_admin 建第一个管理员，别的动作一律拒绝。
+                    if user is None and (payload.get("action") or "") == "setup_admin":
+                        self._send(200, auth_http.write_users(conn, payload, None))
+                    elif not user:
+                        self._send(200, {"ok": False, "error": "请先登录"})
+                    else:
+                        self._send(200, auth_http.write_users(conn, payload, user))
+                finally:
+                    conn.close()
+            elif path == "/api/questions":
+                conn = connect()
+                try:
+                    blocked = self._gate(conn, [payload.get("cat_id")])
+                finally:
+                    conn.close()
+                if blocked:
+                    self._send(200, blocked)
+                else:
+                    self._send(200, create_question(payload))
             elif path == "/api/questions/bulk":
                 action = payload.get("action")
                 ids = payload.get("ids") or []
-                if action == "delete":
+                conn = connect()
+                try:
+                    blocked = self._gate(conn, auth.cats_of(conn, ids))
+                finally:
+                    conn.close()
+                if blocked:
+                    self._send(200, blocked)
+                elif action == "delete":
                     self._send(200, delete_questions(ids))
                 elif action == "update":
                     self._send(200, bulk_update(ids, payload.get("field"), payload.get("value")))
@@ -1635,9 +1864,11 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(400, {"ok": False, "error": "未知操作"})
             elif path == "/api/papers":
                 import paper_engine
+                payload = self._scope_payload(payload)
                 self._send(200, paper_engine.build(payload))
             elif path == "/api/papers/precheck":
                 import paper_engine
+                payload = self._scope_payload(payload)
                 self._send(200, paper_engine.precheck(payload))
             elif path.startswith("/api/papers/"):
                 import paper_engine
@@ -1652,11 +1883,35 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._send(404, {"ok": False, "error": "not found"})
             elif path == "/api/categories":
-                self._send(200, category_action(payload))
+                conn = connect()
+                try:
+                    blocked = self._admin_only(conn, "调整分类结构")
+                finally:
+                    conn.close()
+                if blocked:
+                    self._send(200, blocked)
+                else:
+                    self._send(200, category_action(payload))
             elif path == "/api/backups/restore":
-                self._send(200, restore_backup(payload.get("name")))
+                conn = connect()
+                try:
+                    blocked = self._admin_only(conn, "恢复备份")
+                finally:
+                    conn.close()
+                if blocked:
+                    self._send(200, blocked)
+                else:
+                    self._send(200, restore_backup(payload.get("name")))
             elif path == "/api/maintenance":
-                self._send(200, maintenance(payload.get("action")))
+                conn = connect()
+                try:
+                    blocked = self._admin_only(conn, "执行维护操作")
+                finally:
+                    conn.close()
+                if blocked:
+                    self._send(200, blocked)
+                else:
+                    self._send(200, maintenance(payload.get("action")))
             elif path == "/api/import/parse":
                 import importer
                 job = payload.get("job") or ""
@@ -1691,6 +1946,15 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/import/commit":
                 items = payload.get("items") or []
                 src_file = (payload.get("filename") or "").strip()
+                _c0 = connect()
+                try:
+                    _blocked = self._gate(
+                        _c0, sorted({it.get("cat_id") for it in items if it.get("cat_id")}))
+                finally:
+                    _c0.close()
+                if _blocked:
+                    self._send(200, _blocked)
+                    return
                 conn = connect()
                 imported, failed, errors = 0, 0, []
                 for it in items:
@@ -1724,8 +1988,29 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "imported": imported,
                                  "failed": failed, "errors": errors[:20]})
             elif path == "/api/settings":
+                # 设置里有 multi_user / bind_lan / session_minutes 这类全局开关。
+                # 不挡的话，普通用户在控制台 POST 一个 multi_user=0 就把整套权限关掉了，
+                # 岗位授权等于形同虚设。所以按"改系统级配置"处理，只留给管理员。
+                _c = connect()
+                try:
+                    _blocked = self._admin_only(_c, "修改系统设置")
+                finally:
+                    _c.close()
+                if _blocked:
+                    # 单机模式没有账号，_admin_only 直接放行，老用法不受影响
+                    self._send(200, _blocked)
+                    return
                 self._send(200, save_settings(payload))
             elif path == "/api/ai/config":
+                # 密钥与模型是全局配置，改了影响所有人，同样只留给管理员
+                _c = connect()
+                try:
+                    _blocked = self._admin_only(_c, "修改 AI 配置")
+                finally:
+                    _c.close()
+                if _blocked:
+                    self._send(200, _blocked)
+                    return
                 import ai_parse
                 ai_parse.save_config(payload)
                 # 一律回脱敏视图：密钥刚填进来，也不能原样吐回页面
@@ -1817,9 +2102,13 @@ def main():
                 port = p
                 break
 
+    # 绑定地址（FR-MU-10）：默认只听本机；开了局域网才绑 0.0.0.0。
+    # 判定要读库里的设置，所以放在 init_db() 之后。
+    lan = str(get_setting("bind_lan") or "0") == "1"
+    host = "0.0.0.0" if lan else "127.0.0.1"
     url = f"http://127.0.0.1:{port}/"
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    logging.info("服务启动 %s 版本 %s 代码快照 %s", url, APP_VERSION,
+    httpd = ThreadingHTTPServer((host, port), Handler)
+    logging.info("服务启动 %s 绑定 %s 版本 %s 代码快照 %s", url, host, APP_VERSION,
                  time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(_BOOT_MTIME)))
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()

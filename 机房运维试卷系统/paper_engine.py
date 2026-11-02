@@ -260,6 +260,35 @@ def resolve_quota(cfg, cats, total_n):
 
 # ---------------------------------------------------------------- 题库池
 
+def _allowed(cfg):
+    """组卷范围白名单（FR-MU-06）。None = 不限（管理员或不启用多用户）。
+
+    引擎不查 user 表：授权范围由 server 层按当前会话算好塞进 cfg，
+    这样引擎本身仍然与"谁在用"无关，单元测试照旧直接传配置。
+    """
+    v = cfg.get("allowed_cats")
+    if v is None:
+        return None
+    return set(int(x) for x in v)
+
+
+def _scope_cats(cfg, cats):
+    """按白名单收窄分类树：配额、分类下拉都只看到自己岗位的分类。"""
+    allow = _allowed(cfg)
+    if allow is None:
+        return cats
+    return [c for c in cats if int(c["id"]) in allow]
+
+
+def _out_of_scope(cfg, cats):
+    """配置里点名了但不在授权范围内的分类名，用于给出明确报错。"""
+    allow = _allowed(cfg)
+    if allow is None:
+        return []
+    return [c["name"] for c in cats if int(c["id"]) not in allow
+            and str(c["id"]) in (cfg.get("quotas") or {})]
+
+
 def load_pool(cfg, conn):
     rules = cfg["rules"]
     where = ["1=1"]
@@ -288,6 +317,15 @@ def load_pool(cfg, conn):
             sub = " OR ".join(["tags LIKE ?"] * len(tags))
             where.append(f"({sub})")
             args.extend(["%" + t + "%" for t in tags])
+
+    allow = _allowed(cfg)
+    if allow is not None:
+        if not allow:
+            # 授权为空 = 一道题都组不了。返回空池让预检给出"题量不足"的具体缺口，
+            # 比在 SQL 里拼一个恒假的 IN () 更容易解释。
+            return []
+        where.append("cat_id IN (%s)" % ",".join(["?"] * len(allow)))
+        args.extend(sorted(allow))
 
     sql = "SELECT * FROM question WHERE " + " AND ".join(where)
     rows = conn.execute(sql, args).fetchall()
@@ -318,9 +356,14 @@ def precheck(cfg, conn=None):
     own = conn is None
     conn = conn or core.connect()
     cfg = _norm(cfg)
-    cats = core.categories_tree(conn)
+    all_cats = core.categories_tree(conn)
+    cats = _scope_cats(cfg, all_cats)
     rows = active_rows(cfg)
     errors, warnings, gaps = [], [], []
+
+    beyond = _out_of_scope(cfg, all_cats)
+    if beyond:
+        errors.append("这些分类不在你的岗位授权内，不能配题：" + "、".join(beyond))
 
     if not rows:
         errors.append("至少启用一个题型并填写题量")
@@ -592,7 +635,13 @@ def build(cfg):
             return {"ok": False, "errors": pre["errors"], "precheck": pre}
 
         rows = active_rows(cfg)
-        cats = core.categories_tree(conn)
+        all_cats = core.categories_tree(conn)
+        cats = _scope_cats(cfg, all_cats)
+        beyond = _out_of_scope(cfg, all_cats)
+        if beyond:
+            return {"ok": False,
+                    "errors": ["这些分类不在你的岗位授权内，不能配题：" + "、".join(beyond)],
+                    "precheck": pre}
         total_n = sum(r["count"] for r in rows)
         quota = None
         if cfg["mode"] in ("quota", "custom"):

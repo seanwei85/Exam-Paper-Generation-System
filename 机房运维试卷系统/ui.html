@@ -278,6 +278,45 @@ td.stem .opt-line{font-size:12px;color:var(--text-2);margin-top:2px;white-space:
 }
 @media (max-width:1200px){.paper-layout{grid-template-columns:1fr}.paper-side{position:static}}
 @media (max-width:1100px){.grid2{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* ---------- P35 多用户：登录页 / 只读条 / 占用标记 ---------- */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.login-card{width:384px;max-width:96vw;background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px 26px 22px;box-shadow:0 6px 28px rgba(15,23,42,.08)}
+.login-card .lg-head{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.login-card .lg-head img{width:36px;height:36px;border-radius:9px}
+.login-card .lg-head b{display:block;font-size:16px;letter-spacing:.2px}
+.login-card .lg-head span{display:block;font-size:12px;color:var(--text-3)}
+.login-card label{display:block;font-size:12.5px;color:var(--text-2);margin:12px 0 5px}
+.login-card .lg-err{color:var(--danger);font-size:12.5px;min-height:18px;margin-top:10px}
+.login-card button.primary{width:100%;margin-top:16px;padding:9px}
+.login-card .lg-tip{font-size:12px;color:var(--text-3);margin-top:14px;line-height:1.7}
+.login-card .lg-tip code{background:#f3f5f8;padding:1px 5px;border-radius:3px}
+/* 只读条：登录了但不能写时常驻顶部，必须说清"为什么不能写"，否则用户只看到点了没反应 */
+.ro-bar{position:fixed;left:0;right:0;top:0;z-index:290;display:flex;align-items:center;gap:10px;padding:8px 16px;background:#eef4ff;border-bottom:1px solid #cfdff8;color:#1e3f7a;font-size:13px}
+.ro-bar[hidden]{display:none}
+.ro-bar b{color:#12305e}
+.ro-bar .who{margin-left:auto;font-size:12px;color:#3f5f96;display:flex;align-items:center;gap:8px}
+.ro-bar .who button{border-color:#cfdff8;background:#fff;color:#1e3f7a;padding:3px 9px;font-size:12px}
+body.has-ro{padding-top:44px}
+/* 分类占用：数据集里该分类正被别人编辑，行上挂个小标签 */
+.ulock{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;background:#fdf3e7;color:#9a5b12;margin-left:6px;white-space:nowrap}
+.cat-busy{background:#fffcf5}
+/* 用户管理：一个账号一行，分类授权用可点的小方块 */
+.ucard-user{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:9px;flex-wrap:wrap}
+.ucard-user .u-name{font-weight:600;min-width:92px}
+.ucard-user .u-tag{font-size:11px;padding:1px 6px;border-radius:4px;background:#eef4ff;color:#2554b0}
+.ucard-user .u-cats{flex:1;display:flex;flex-wrap:wrap;gap:5px;min-width:180px}
+.ucard-user .u-cats label{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-2);border:1px solid var(--line);border-radius:5px;padding:2px 7px;cursor:pointer;margin:0}
+.ucard-user .u-cats input{width:auto;margin:0}
+.ucard-user .u-cats label.on{background:var(--primary-bg);border-color:#c7d9fb;color:#2554b0}
+/* 新建账号区的岗位勾选，与用户行里的小方块保持同一套观感 */
+.ucat-chip{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-2);border:1px solid var(--line-2);border-radius:5px;padding:2px 7px;cursor:pointer;margin:0}
+.ucat-chip input{width:auto;margin:0}
+.ucat-chip.on{background:var(--primary-bg);border-color:#c7d9fb;color:#2554b0}
+/* 表单里的 .f label{display:block} 比单独的 .ucat-chip 更具体，会把这些勾选框
+   压成块级、边框和横排全失效（截图上看就是一堆裸勾选框）。所以这里再声明一遍。 */
+.f label.ucat-chip{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-2);border:1px solid var(--line-2);border-radius:5px;padding:2px 7px;cursor:pointer;margin:0}
+.f label.ucat-chip.on{background:var(--primary-bg);border-color:#c7d9fb;color:#2554b0}
+/* ====CSS-END==== */
 </style>
 </head>
 <body>
@@ -305,6 +344,12 @@ td.stem .opt-line{font-size:12px;color:var(--text-2);margin-top:2px;white-space:
   <main class="main" id="main"></main>
 </div>
 <div class="toast" id="toast"></div>
+<div class="ro-bar" id="roBar" hidden>
+  <span id="roText"></span>
+  <span class="who"><span id="roWho"></span><button onclick="doLogout()">退出登录</button></span>
+</div>
+<div id="loginRoot" hidden></div>
+<!-- ====HTML-END==== -->
 
 <script>
 const API = {
@@ -322,6 +367,7 @@ const PAGES = [
   {key:'import', name:'批量导入', icon:'⇪'},
   {key:'paper', name:'自动组卷', icon:'◈'},
   {key:'papers', name:'试卷库', icon:'▤'},
+  {key:'users', name:'用户管理', icon:'☺'},
   {key:'settings', name:'系统设置', icon:'⚙'}
 ];
 const FILTER = {cat:'', sub:'', type:'', diff:'', kw:'', answer:'', ai:'', sort:'id_desc', page:1, size:20};
@@ -343,7 +389,10 @@ function defaultScore(type, blanks){
 function renderNav(){
   let cur = location.hash.replace('#','').split('?')[0] || 'dashboard';
   if(cur === 'paper-detail') cur = 'papers';
-  document.getElementById('nav').innerHTML = PAGES.map(p=>
+  // 用户管理只在多人协作模式下有意义：单机模式没有账号体系，
+  // 摆一个空页面在那里只会让人以为"是不是没生效"。
+  const pages = PAGES.filter(p => p.key !== 'users' || AUTH.on);
+  document.getElementById('nav').innerHTML = pages.map(p=>
     `<a href="#${p.key}" class="${p.key===cur?'on':''}"><span class="dot"></span>${p.name}</a>`
   ).join('');
 }
@@ -469,12 +518,13 @@ async function viewBank(){
     const aiTag = q.ai
       ? `<span class="ai-tag ai-${esc(q.ai.verdict)}" title="点开这道题查看 AI 的建议" onclick="location.hash='editor?id=${q.id}'">${AI_LABEL[q.ai.verdict]||'AI 建议'}</span>`
       : '';
+    const busy = lockOf(q.cat_id) && lockOf(q.cat_id) !== meName();
     return `
-    <tr>
+    <tr class="${busy?'cat-busy':''}">
       <td style="width:34px"><input type="checkbox" class="pick" value="${q.id}" style="width:auto"></td>
       <td class="stem"><div class="txt">${esc(q.stem)}</div>
         ${optLine}
-        <div class="meta">#${q.id} · ${esc(q.cat_name)}/${esc(q.sub_name)}${q.blanks?` · ${q.blanks} 空`:''}${q.answer?'':' · <span class="miss-ans">缺答案</span>'}${aiTag}</div></td>
+        <div class="meta">#${q.id} · ${esc(q.cat_name)}/${esc(q.sub_name)}${lockTag(q.cat_id)}${q.blanks?` · ${q.blanks} 空`:''}${q.answer?'':' · <span class="miss-ans">缺答案</span>'}${aiTag}</div></td>
       <td><span class="tag t-${q.qtype}">${q.type_name}</span></td>
       <td class="d-${q.diff}">${q.diff_name}</td>
       <td class="num">${q.final_score}</td>
@@ -1208,7 +1258,9 @@ async function saveQuestion(continueNext){
   const r = await API.post('/api/questions', payload);
   if(!r.ok){
     if(r.need_dup_confirm){ showDupWarn(payload, r.dup); return; }
-    toast((r.errors||['保存失败']).join('；'), true); return;
+    // 互斥/只读/未授权都由后端给出具体原因，原样显示；否则用户只会看到"保存失败"，
+    // 完全不知道是等一会儿、还是该找管理员要权限。
+    toast((r.errors||[r.error||'保存失败']).join('；'), true); return;
   }
   toast(continueNext?'已保存，继续录下一题':'已保存');
   if(continueNext){
@@ -1374,7 +1426,7 @@ async function viewPaper(){
       </div>
       <div class="card-b">
         ${STATE.cats.map(c=>`<div class="quota-row">
-          <span class="n">${c.name}</span>
+          <span class="n">${esc(c.name)}${lockTag(c.id)}</span>
           <input type="number" min="0" id="q_${c.id}" value="${cfg.quotas[c.id]===undefined?'':cfg.quotas[c.id]}" oninput="onCfg()">
           <span class="r" id="qc_${c.id}"></span>
         </div>`).join('')}
@@ -2419,6 +2471,7 @@ async function viewSettings(){
     </tr>`).join('') : '<tr><td colspan="4" class="empty">暂无备份，点「立即备份」生成</td></tr>';
 
   return `<div class="page-head"><div><h1>系统设置</h1><p>单位信息、分类维护、数据备份与清理</p></div></div>
+  ${multiUserCard()}
   <div class="grid2">
     <div>
       <div class="card">
@@ -2548,6 +2601,402 @@ function placeholder(title, lines){
   <div class="card"><div class="placeholder"><b>该模块正在开发中</b>${lines.slice(1).map(l=>`<div>${l}</div>`).join('')}</div></div>`;
 }
 
+// ---------------------------------------------------------------- 多用户（P35）
+/** 登录态。multi_user 关着时 AUTH.on=false，一切走原路，老用户感觉不到任何变化。
+ *  can_write_any 的含义是"能写任何分类"：管理员在有普通用户在线时为 false（被动只读），
+ *  普通用户本身就 false —— 所以判断"只读"不能只看它，还要看是不是管理员。 */
+const AUTH = {on:false, user:null, needSetup:false, canWriteAny:true, locks:[]};
+
+function meName(){ return (AUTH.user && AUTH.user.name) || '本机用户'; }
+function catName(id){ const c = STATE.cats.find(x=>x.id==id); return c ? c.name : ('#'+id); }
+function lockOf(catId){
+  const l = (AUTH.locks||[]).find(x=>String(x.cat_id)===String(catId));
+  return l ? (l.name||'') : '';
+}
+/** 分类正被别人编辑时的小标签。占用人是自己就不显示，否则会显示"我自己在编辑我"。 */
+function lockTag(catId){
+  const n = lockOf(catId);
+  if(!n || n === meName()) return '';
+  return '<span class="ulock">' + esc(n) + ' 编辑中</span>';
+}
+/** 这个分类我现在能不能改。写按钮的显隐都看它，和后端 auth.check_write 的规则一一对应。 */
+function canEditCat(catId){
+  if(!AUTH.on || !AUTH.user) return true;      // 单用户模式不限制
+  if(!AUTH.canWriteAny) return false;          // 管理员被普通用户在线挡住
+  if(AUTH.user.is_admin) return true;
+  return (AUTH.user.cats||[]).indexOf(Number(catId)) >= 0;
+}
+
+/** 取登录态并按状态决定是进系统、进登录页、还是进初始化页。
+ *  返回 true 表示可以继续加载题库数据。 */
+async function bootAuth(){
+  let w = null;
+  try{ w = await API.get('/api/whoami'); }catch(_){ w = null; }
+  const loginRoot = document.getElementById('loginRoot');
+  const layout = document.querySelector('.layout');
+  if(!w || !w.ok){
+    // 旧后端没有这个接口：按单用户处理，别把人挡在门外
+    AUTH.on = false;
+    if(loginRoot) loginRoot.hidden = true;
+    if(layout) layout.style.display = '';
+    return true;
+  }
+  AUTH.on = !!w.multi_user;
+  AUTH.user = w.user || null;
+  AUTH.needSetup = !!w.need_setup;
+  AUTH.canWriteAny = w.can_write_any !== false;
+  AUTH.locks = w.locks || [];
+  if(!AUTH.on){
+    if(loginRoot) loginRoot.hidden = true;
+    if(layout) layout.style.display = '';
+    return true;
+  }
+  if(AUTH.needSetup){ showSetupAdmin(); return false; }
+  if(!AUTH.user){ showLogin(''); return false; }
+  if(loginRoot) loginRoot.hidden = true;
+  if(layout) layout.style.display = '';
+  applyRoBar();
+  return true;
+}
+
+/** 登录页。整页顶掉系统界面 —— 没登录就连侧栏都不给看，避免"半开"状态。 */
+function showLogin(msg){
+  const root = document.getElementById('loginRoot');
+  const layout = document.querySelector('.layout');
+  if(layout) layout.style.display = 'none';
+  if(!root) return;
+  root.hidden = false;
+  const logo = document.querySelector('.brand-logo');
+  root.innerHTML = `
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="lg-head">
+        <img src="${logo ? logo.src : ''}" alt="">
+        <div><b>机房运维试卷系统</b><span>多人协作 · 请登录</span></div>
+      </div>
+      <label>用户名</label>
+      <input id="lgName" autocomplete="username" placeholder="输入用户名">
+      <label>密码</label>
+      <input id="lgPwd" type="password" autocomplete="current-password" placeholder="输入登录密码"
+        onkeydown="if(event.key==='Enter') doLogin()">
+      <div class="lg-err" id="lgErr">${esc(msg||'')}</div>
+      <button class="primary" onclick="doLogin()">登录</button>
+      <div class="lg-tip">账号由管理员在「用户管理」里创建；忘记密码请找管理员重置。登录后只能看到自己岗位（分类）的题目。</div>
+    </div>
+  </div>`;
+  setTimeout(()=>{ const el = document.getElementById('lgName'); if(el) el.focus(); }, 30);
+}
+
+async function doLogin(){
+  const err = document.getElementById('lgErr');
+  const name = (document.getElementById('lgName').value||'').trim();
+  const pwd = document.getElementById('lgPwd').value || '';
+  if(!name){ err.textContent = '请输入用户名'; return; }
+  if(!pwd){ err.textContent = '请输入密码'; return; }
+  err.textContent = '正在登录…';
+  const r = await API.post('/api/login', {name, password: pwd});
+  if(!r || !r.ok){ err.textContent = (r && r.error) || '登录失败'; return; }
+  const ok = await bootAuth();
+  if(!ok) return;
+  await loadState();
+  route();
+}
+
+/** 首次启用多人协作时，库里一个账号都没有。这时候才允许匿名建第一个管理员，
+ *  建完立刻关掉这个口子（后端以 count_users()==0 为条件）。 */
+function showSetupAdmin(){
+  const root = document.getElementById('loginRoot');
+  const layout = document.querySelector('.layout');
+  if(layout) layout.style.display = 'none';
+  if(!root) return;
+  root.hidden = false;
+  const logo = document.querySelector('.brand-logo');
+  root.innerHTML = `
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="lg-head">
+        <img src="${logo ? logo.src : ''}" alt="">
+        <div><b>先创建管理员</b><span>多人协作已开启 · 首次使用</span></div>
+      </div>
+      <div class="lg-tip" style="margin-top:0">系统还没建过任何账号。请先创建一个管理员，
+        之后由管理员给别人建号并分配岗位（分类）。这个入口在建成后自动关闭。</div>
+      <label>管理员用户名</label>
+      <input id="suName" autocomplete="username" placeholder="例如 admin">
+      <label>登录密码（至少 6 位）</label>
+      <input id="suPwd" type="password" autocomplete="new-password">
+      <label>再输一次</label>
+      <input id="suPwd2" type="password" autocomplete="new-password"
+        onkeydown="if(event.key==='Enter') doSetupAdmin()">
+      <div class="lg-err" id="suErr"></div>
+      <button class="primary" onclick="doSetupAdmin()">创建管理员并进入</button>
+    </div>
+  </div>`;
+}
+
+async function doSetupAdmin(){
+  const err = document.getElementById('suErr');
+  const name = (document.getElementById('suName').value||'').trim();
+  const p1 = document.getElementById('suPwd').value || '';
+  const p2 = document.getElementById('suPwd2').value || '';
+  if(!name){ err.textContent = '请输入用户名'; return; }
+  if(p1.length < 6){ err.textContent = '密码至少 6 位'; return; }
+  if(p1 !== p2){ err.textContent = '两次输入的密码不一致'; return; }
+  err.textContent = '正在创建…';
+  const r = await API.post('/api/users', {action:'setup_admin', name, password: p1});
+  if(!r || !r.ok){ err.textContent = (r && r.error) || '创建失败'; return; }
+  // 建完直接登录，省得再输一遍密码
+  await API.post('/api/login', {name, password: p1});
+  const ok = await bootAuth();
+  if(!ok) return;
+  await loadState();
+  route();
+}
+
+async function doLogout(){
+  try{ await API.post('/api/logout', {}); }catch(_){}
+  AUTH.user = null;
+  AUTH.canWriteAny = true;
+  AUTH.locks = [];
+  const bar = document.getElementById('roBar');
+  if(bar){ bar.hidden = true; }
+  document.body.classList.remove('has-ro');
+  showLogin('已退出登录');
+}
+
+/** 顶部状态条。两种措辞必须分开：
+ *  管理员被普通用户挡住 -> 说他只读、能看能组卷；
+ *  普通用户 -> 说清他能改哪几个分类，免得以为软件坏了。 */
+function applyRoBar(){
+  const bar = document.getElementById('roBar');
+  if(!bar) return;
+  let mode = '';
+  if(AUTH.on && AUTH.user){
+    if(AUTH.user.is_admin && !AUTH.canWriteAny) mode = 'ro';
+    else if(!AUTH.user.is_admin) mode = 'info';
+  }
+  bar.hidden = !mode;
+  document.body.classList.toggle('has-ro', !!mode);
+  if(!mode) return;
+  const txt = document.getElementById('roText');
+  if(mode === 'ro'){
+    txt.innerHTML = '有普通用户在线，你当前为<b>只读</b>：可查看、可组卷，不能修改题库';
+  }else{
+    const names = (AUTH.user.cats||[]).map(catName).filter(Boolean);
+    txt.innerHTML = '当前岗位：<b>' + (names.length ? names.map(esc).join(' · ') : '未分配')
+      + '</b>' + (names.length ? '（只能查看和编辑这些分类）' : '（请联系管理员分配）');
+  }
+  const who = document.getElementById('roWho');
+  if(who) who.textContent = meName();
+}
+
+/** 会话过期时后端会回 need_login。集中在这里拦一次，统一弹回登录页，
+ *  免得每个调用点都写一遍"如果没登录则…"。 */
+function needLoginGuard(res){
+  if(res && res.need_login){
+    AUTH.user = null;
+    showLogin('登录已过期，请重新登录');
+    return true;
+  }
+  return false;
+}
+
+/** 定时轻量刷新登录态与分类占用。不重渲染当前页（会把正在填的表单冲掉），
+ *  只更新顶部条与锁快照；占用标签在下次翻页/刷新时体现。 */
+async function pollAuth(){
+  if(!AUTH.on) return;
+  let w = null;
+  try{ w = await API.get('/api/whoami'); }catch(_){ return; }
+  if(!w || !w.ok) return;
+  AUTH.user = w.user || null;
+  AUTH.canWriteAny = w.can_write_any !== false;
+  AUTH.locks = w.locks || [];
+  if(!AUTH.user){ showLogin('登录已过期，请重新登录'); return; }
+  applyRoBar();
+}
+// ====JS1-END====
+
+// ---------------------------------------------------------------- 用户管理页
+async function viewUsers(){
+  const r = await API.get('/api/users');
+  if(!r.ok){
+    return `<div class="page-head"><div><h1>用户管理</h1><p>${esc(r.error||'读取失败')}</p></div></div>`;
+  }
+  const users = r.users || [];
+  const catBoxes = (sel) => STATE.cats.map(c=>{
+    const on = (sel||[]).indexOf(c.id) >= 0;
+    return `<label class="${on?'on':''}"><input type="checkbox" value="${c.id}" ${on?'checked':''}
+      onchange="this.parentNode.classList.toggle('on', this.checked)">${esc(c.name)}</label>`;
+  }).join('');
+  const rows = users.map(u=>`
+    <div class="ucard-user">
+      <span class="u-name">${esc(u.name)}</span>
+      ${u.is_admin ? '<span class="u-tag">管理员</span>' : ''}
+      <span class="u-cats">${
+        u.is_admin
+          ? '<span class="hint" style="margin:0">管理员可管理全部岗位，并负责建号与授权</span>'
+          : catBoxes(u.cats)
+      }</span>
+      ${u.is_admin ? '' : `<button style="padding:2px 8px;font-size:12px" onclick="saveUserCats(${u.id}, this)">保存岗位</button>`}
+      <button style="padding:2px 8px;font-size:12px" onclick="resetPwd(${u.id}, '${esc(u.name)}')">改密码</button>
+      ${u.is_admin ? '' : `<button style="padding:2px 8px;font-size:12px;color:var(--danger)" onclick="delUser(${u.id}, '${esc(u.name)}')">删除</button>`}
+    </div>`).join('');
+
+  return `<div class="page-head">
+    <div><h1>用户管理</h1><p>建号、分配岗位（一级分类）、重置密码。普通用户只能看到并编辑自己的分类。</p></div>
+  </div>
+  <div class="notice" style="margin-bottom:14px">
+    同一分类同时只允许一个人编辑。<b>管理员在有普通用户在线时自动变为只读</b>（可查看、可组卷），
+    这是为了防止“管理员改题库、其他人同时在出卷”导致的数据错乱。
+  </div>
+  <div class="card">
+    <div class="card-h"><b>新建账号</b></div>
+    <div class="card-b">
+      <div class="form">
+        <div class="f c4"><label>用户名</label><input id="nuName" placeholder="例如 张工"></div>
+        <div class="f c4"><label>初始密码（至少 6 位）</label><input id="nuPwd" type="password"></div>
+        <div class="f c4"><label>岗位（可多选）</label>
+          <div id="nuCats" class="u-cats" style="display:flex;flex-wrap:wrap;gap:5px;padding-top:4px">
+            ${STATE.cats.map(c=>`<label class="ucat-chip"><input type="checkbox" value="${c.id}"
+              onchange="this.parentNode.classList.toggle('on', this.checked)">${esc(c.name)}</label>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px"><button class="primary" onclick="createUser()">创建账号</button></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-h"><b>已建账号（${users.length}）</b></div>
+    <div class="card-b">${rows || '<div class="empty">还没有账号</div>'}</div>
+  </div>`;
+}
+
+async function createUser(){
+  const name = (document.getElementById('nuName').value||'').trim();
+  const pwd = document.getElementById('nuPwd').value || '';
+  const cats = [...document.querySelectorAll('#nuCats input')]
+    .filter(c=>c.checked).map(c=>Number(c.value));
+  if(!name) return toast('请填用户名', true);
+  if(pwd.length < 6) return toast('密码至少 6 位', true);
+  if(!cats.length) return toast('请至少勾选一个岗位，否则他登录后什么也看不到', true);
+  const r = await API.post('/api/users', {action:'create', name, password: pwd, cats});
+  if(!r.ok){ toast(r.error||'创建失败', true); return; }
+  toast('已创建账号 ' + name);
+  route();
+}
+
+async function saveUserCats(uid, btn){
+  const box = btn.closest('.ucard-user');
+  const cats = [...box.querySelectorAll('.u-cats input')].filter(c=>c.checked).map(c=>Number(c.value));
+  if(!cats.length) return toast('至少保留一个岗位', true);
+  const r = await API.post('/api/users', {action:'cats', id: uid, cats});
+  if(!r.ok){ toast(r.error||'保存失败', true); return; }
+  toast('岗位已更新');
+  route();
+}
+
+async function resetPwd(uid, name){
+  const pwd = prompt('给「' + name + '」设置新密码（至少 6 位）');
+  if(pwd === null) return;
+  if(pwd.length < 6) return toast('密码至少 6 位', true);
+  const r = await API.post('/api/users', {action:'password', id: uid, password: pwd});
+  if(!r.ok){ toast(r.error||'修改失败', true); return; }
+  toast('密码已重置');
+}
+
+async function delUser(uid, name){
+  if(!confirm('删除账号「' + name + '」？删除后该账号立即无法登录，已出的试卷不受影响。')) return;
+  const r = await API.post('/api/users', {action:'delete', id: uid});
+  if(!r.ok){ toast(r.error||'删除失败', true); return; }
+  toast('已删除');
+  route();
+}
+// ====JS2-END====
+
+// ---------------------------------------------------------------- 设置页：多人协作
+/** 多人协作开关卡片。放在设置页最上面，因为它会改变整个软件的使用方式，
+ *  不能让用户在"系统设置"里翻半天才找到。 */
+function multiUserCard(){
+  const s = STATE.settings || {};
+  const on = String(s.multi_user||'0') === '1';
+  const lan = String(s.bind_lan||'0') === '1';
+  const mins = esc(s.session_minutes || '30');
+  let lanTip = '';
+  if(lan){
+    const host = location.hostname || '127.0.0.1';
+    const port = location.port || '8765';
+    lanTip = `<div class="notice" style="margin-top:12px;background:#eef4ff;border-color:#cfdff8;color:#1e3f7a">
+      <b>已允许局域网访问。</b>同网段的同事在浏览器输入
+      <code>http://${esc(host)}:${esc(port)}/</code> 即可打开本系统。
+      本机 IP 可在命令行用 <code>ipconfig</code> 看「IPv4 地址」。
+      <b>改这一项要重启软件才生效。</b>
+    </div>`;
+  }else{
+    lanTip = `<div class="hint" style="margin-top:8px">只允许本机（127.0.0.1）访问。
+      要在别的电脑上用，先打开这个开关，然后重启软件（双击 <code>停止试卷系统.bat</code> 再双击
+      <code>启动试卷系统.bat</code>）。</div>`;
+  }
+  const onTip = on
+    ? `<div class="notice" style="margin-top:12px">
+        <b>多人协作已开启。</b>每个人用自己的账号登录，只能看到并编辑自己被分配的分类。
+        同一分类同时只允许一个人编辑；管理员在有普通用户在线时自动只读。
+        <br>账号在左侧「用户管理」里创建。
+      </div>`
+    : `<div class="hint" style="margin-top:8px">现在是单机模式：不用登录，任何人都能改全部题库。
+      需要按岗位分工、防止两个人同时改同一科时再打开；打开后要先建一个管理员账号。</div>`;
+  return `<div class="card" style="margin-bottom:14px">
+    <div class="card-h"><b>多人协作</b><span style="font-size:12px;color:var(--text-3)">默认关闭</span></div>
+    <div class="card-b">
+      <div class="form">
+        <div class="f c4"><label>使用方式</label>
+          <select id="muMode" onchange="saveMultiUser()">
+            <option value="0" ${on?'':'selected'}>单机使用（不用登录）</option>
+            <option value="1" ${on?'selected':''}>多人协作（按岗位分工）</option>
+          </select>
+        </div>
+        <div class="f c4"><label>允许局域网访问（其他电脑连本机）</label>
+          <select id="muLan" onchange="saveMultiUser()">
+            <option value="0" ${lan?'':'selected'}>否，仅本机</option>
+            <option value="1" ${lan?'selected':''}>是，同网段可访问</option>
+          </select>
+        </div>
+        <div class="f c4"><label>多久没操作自动退出（分钟）</label>
+          <input type="number" id="muMins" value="${mins}" min="5" max="480" onchange="saveMultiUser()">
+        </div>
+      </div>
+      ${onTip}
+      ${lanTip}
+    </div>
+  </div>`;
+}
+
+async function saveMultiUser(){
+  // 这三个 id 必须与"单位与默认值"里的 sMulti（多选默认分值）区分开，
+  // 否则 getElementById 会拿到分数输入框，读出来的"使用方式"永远是空字符串。
+  const multi = document.getElementById('muMode').value;
+  const lan = document.getElementById('muLan').value;
+  const mins = document.getElementById('muMins').value;
+  const before = String((STATE.settings||{}).multi_user||'0');
+  const lanBefore = String((STATE.settings||{}).bind_lan||'0');
+  const r = await API.post('/api/settings', {
+    multi_user: multi, bind_lan: lan, session_minutes: mins,
+  });
+  if(!r.ok){ toast(r.error||'保存失败', true); return; }
+  STATE.settings = r.settings || STATE.settings;
+  if(multi !== before){
+    // 切换使用方式会立刻改变"要不要登录"，必须重走一遍登录判定，
+    // 否则界面还停在旧状态，用户会以为开关没生效。
+    toast(multi === '1' ? '多人协作已开启，正在准备管理员账号…' : '已切回单机模式');
+    await bootAuth();
+    await loadState();
+    route();
+    return;
+  }
+  // 局域网开关是启动时 bind 的，改了必须重启才生效，这里要说清楚
+  toast('已保存' + (lan !== lanBefore ? '，局域网开关需重启软件生效' : ''));
+  if(lan !== lanBefore) route();
+}
+// ====JS3-END====
+
 // ---------------------------------------------------------------- 路由
 async function route(){
   renderNav();
@@ -2575,6 +3024,7 @@ async function route(){
     else if(key==='paper'){ main.innerHTML = await viewPaper(); refreshPrecheck(); }
     else if(key==='papers') main.innerHTML = await viewPapers();
     else if(key==='paper-detail'){ main.innerHTML = await viewPaperDetail(params); if(params.tab==='ans') switchSheet(1); }
+    else if(key==='users') main.innerHTML = await viewUsers();
     else if(key==='settings') main.innerHTML = await viewSettings();
     else main.innerHTML = viewDashboard();
   }catch(e){
@@ -2618,8 +3068,14 @@ async function checkStale(){
 
 (async function(){
   checkStale();     // 不 await：自检慢一点不该拖住首屏
+  // 登录态要先定：没登录时 /api/state 会被后端拒绝，先 loadState 拿不到数据，
+  // 界面就只能显示"加载失败"，所以顺序不能反。
+  const ready = await bootAuth();
+  if(!ready) return;          // 停在登录页 / 初始化页
   await loadState();
   route();
+  // 定时刷新锁快照：别人开始/结束编辑某一科时，顶部条与占用标签要能自己变。
+  setInterval(pollAuth, 20000);
 })();
 </script>
 </body>
