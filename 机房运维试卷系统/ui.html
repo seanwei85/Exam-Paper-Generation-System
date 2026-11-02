@@ -2947,19 +2947,19 @@ function multiUserCard(){
     <div class="card-h"><b>多人协作</b><span style="font-size:12px;color:var(--text-3)">默认关闭</span></div>
     <div class="card-b">
       <div class="form">
-        <div class="f c4"><label>使用方式</label>
+        <div class="f c6"><label>使用方式</label>
           <select id="muMode" onchange="saveMultiUser()">
             <option value="0" ${on?'':'selected'}>单机使用（不用登录）</option>
             <option value="1" ${on?'selected':''}>多人协作（按岗位分工）</option>
           </select>
         </div>
-        <div class="f c4"><label>允许局域网访问（其他电脑连本机）</label>
+        <div class="f c6"><label>允许局域网访问（其他电脑连本机）</label>
           <select id="muLan" onchange="saveMultiUser()">
             <option value="0" ${lan?'':'selected'}>否，仅本机</option>
             <option value="1" ${lan?'selected':''}>是，同网段可访问</option>
           </select>
         </div>
-        <div class="f c4"><label>多久没操作自动退出（分钟）</label>
+        <div class="f c6"><label>多久没操作自动退出（分钟）</label>
           <input type="number" id="muMins" value="${mins}" min="5" max="480" onchange="saveMultiUser()">
         </div>
       </div>
