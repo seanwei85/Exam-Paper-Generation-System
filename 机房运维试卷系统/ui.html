@@ -401,9 +401,10 @@ function defaultScore(type, blanks){
 function renderNav(){
   let cur = location.hash.replace('#','').split('?')[0] || 'dashboard';
   if(cur === 'paper-detail') cur = 'papers';
-  // 用户管理只在多人协作模式下有意义：单机模式没有账号体系，
-  // 摆一个空页面在那里只会让人以为"是不是没生效"。
-  const pages = PAGES.filter(p => p.key !== 'users' || AUTH.on);
+  // 用户管理只在多人协作 + 管理员身份下有意义：单机模式没有账号体系，
+  // 普通用户进去只会看到"只有管理员能查看用户列表"。给一个点开就报错的入口，
+  // 比没有这个入口更让人困惑。
+  const pages = PAGES.filter(p => p.key !== 'users' || (AUTH.on && isAdmin()));
   document.getElementById('nav').innerHTML = pages.map(p=>
     `<a href="#${p.key}" class="${p.key===cur?'on':''}"><span class="dot"></span>${p.name}</a>`
   ).join('');
@@ -2447,9 +2448,53 @@ async function testAi(){
   }
 }
 
+/** 单机模式没有账号体系，沿用老样子（设置页全部可见可改）。 */
+function isAdmin(){
+  if(!AUTH.on) return true;
+  return !!(AUTH.user && AUTH.user.is_admin);
+}
+
+// ---------------------------------------------------------------- 设置页：普通用户
+/** 普通用户看到的设置页：只有"我是谁、我能改哪一科、怎么退出"。
+
+ *  备份与恢复、清库、分类增删、单位默认值、AI 接口与密钥，后端一律按管理员挡
+ *  （server._admin_only / _admin_identity_only）。界面上再摆一遍的结果就是
+ *  "看得见、点得动、点完弹一句只有管理员能…"，这也是用户反馈的原话。
+ *  所以这里不是把按钮禁用，而是整块不渲染——不给人试的机会，也就不产生疑问。
+ */
+function settingsForRegular(){
+  const u = AUTH.user || {};
+  const cats = (u.cats || []).map(catName).filter(Boolean);
+  const mins = (STATE.settings && STATE.settings.session_minutes) || '30';
+  const catHtml = cats.length
+    ? cats.map(n=>`<span class="tag" style="padding:3px 9px;font-size:12px">${esc(n)}</span>`).join('')
+    : '<span style="color:var(--text-3);font-weight:400">未分配岗位，请联系管理员</span>';
+  return `<div class="page-head"><div><h1>系统设置</h1><p>账号信息与使用说明</p></div></div>
+  <div class="notice" style="margin-bottom:14px">单位信息、分类目录、数据备份与 AI 接口由管理员统一维护。</div>
+  <div class="card">
+    <div class="card-h"><b>我的账号</b></div>
+    <div class="card-b">
+      <div class="pre-item"><span>姓名</span><b>${esc(u.name || '—')}</b></div>
+      <div class="pre-item"><span>身份</span><b>普通用户</b></div>
+      <div class="pre-item" style="align-items:flex-start"><span>岗位分类</span>
+        <b style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;max-width:72%;font-weight:400">${catHtml}</b></div>
+      <div class="pre-item"><span>可做的事</span>
+        <b style="font-weight:400;font-size:12.5px;text-align:right">维护授权分类下的题目、组卷、导出试卷</b></div>
+      <div class="hint" style="margin-top:10px">超过 ${esc(mins)} 分钟没有操作会自动退出，重新登录即可。
+        要调整岗位分类或改密码，请找管理员。</div>
+      <div style="margin-top:12px"><button onclick="doLogout()">退出登录</button></div>
+    </div>
+  </div>`;
+}
+
 async function viewSettings(){
+  if(!isAdmin()) return settingsForRegular();
   const s = STATE.settings;
-  const bk = await API.get('/api/backups');
+  // 备份信息只有管理员拿得到；这里再兜一层，接口被挡时页面不能整页报错。
+  let bk;
+  try{ bk = await API.get('/api/backups'); }catch(e){ bk = null; }
+  if(!bk || bk.ok === false || !bk.items) bk = {items:[], data_dir:'—', db_size:0};
+
   // 核对"跑的是不是最新代码"的最方便位置：版本和本次运行时间都在这里
   let ver = {};
   try{ ver = await API.get('/api/version') || {}; }catch(_){ ver = {}; }

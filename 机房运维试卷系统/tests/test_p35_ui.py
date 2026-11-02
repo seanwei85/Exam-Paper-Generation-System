@@ -56,8 +56,13 @@ class P35UiStatic(unittest.TestCase):
         self.assertTrue(i_state > i_auth, "应先判登录态再加载题库数据")
 
     def test_nav_hides_users_in_single_mode(self):
-        self.assertIn("p.key !== 'users' || AUTH.on", self.ui,
-                      "用户管理应按多人协作开关显隐")
+        """用户管理要同时满足"多人协作开着"和"当前是管理员"才出现。
+
+        只判 AUTH.on 不够：多人模式下普通用户也能在导航里看见「用户管理」，
+        点进去只会得到一句"只有管理员能查看用户列表"（P39 修正）。
+        """
+        self.assertIn("p.key !== 'users' || (AUTH.on && isAdmin())", self.ui,
+                      "用户管理应按协作开关与身份显隐")
 
     def test_settings_has_multi_user_card(self):
         self.assertIn("multiUserCard()", self.ui, "设置页没有多人协作卡片")

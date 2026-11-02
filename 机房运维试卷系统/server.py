@@ -1626,6 +1626,24 @@ class Handler(BaseHTTPRequestHandler):
                     "error": "有普通用户在线，管理员当前为只读（可查看、可组卷）"}
         return None
 
+    def _admin_identity_only(self, conn, what):
+        """只读的管理信息：只认身份，不受"管理员被动只读"影响。
+
+        上面那个 _admin_only 挡的是"改数据"；看备份列表、看接口地址什么都不改，
+        管理员正被普通用户挡着时也该看得见，否则设置页会平白报错。
+
+        普通用户则一律不给：数据目录、备份文件名、接口地址与密钥尾号都属于
+        管理员操心的东西，放在普通用户眼前既没用又多一份泄露面。
+        """
+        user, _token, on = self._me(conn)
+        if not on:
+            return None
+        if not user:
+            return {"ok": False, "error": "请先登录", "need_login": True}
+        if not user.get("is_admin"):
+            return {"ok": False, "error": "只有管理员能%s" % what}
+        return None
+
     def _body(self):
         length = int(self.headers.get("Content-Length") or 0)
         if not length:
@@ -1762,6 +1780,14 @@ class Handler(BaseHTTPRequestHandler):
                      % quote(name)},
                 )
             elif path == "/api/backups":
+                conn = connect()
+                try:
+                    blocked = self._admin_identity_only(conn, "查看备份列表")
+                finally:
+                    conn.close()
+                if blocked:
+                    self._send(200, blocked)
+                    return
                 self._send(200, list_backups())
             elif path == "/api/version":
                 st = code_freshness()
@@ -1774,7 +1800,18 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, st)
             elif path == "/api/ai/config":
                 import ai_parse
-                self._send(200, {"config": ai_parse.public_config()})
+                # 接口地址、密钥末 4 位、超时、分块字数都是管理员的配置。
+                # 普通用户只需要"AI 能不能用、用的哪个模型"——导入页的引擎说明要读它，
+                # 多给一份接口地址与密钥尾号没有任何用处。
+                conn = connect()
+                try:
+                    user, _t, on = self._me(conn)
+                finally:
+                    conn.close()
+                cfg = ai_parse.public_config()
+                if on and not (user or {}).get("is_admin"):
+                    cfg = ai_parse.brief_config(cfg)
+                self._send(200, {"config": cfg})
             elif path == "/api/ai/review/summary":
                 self._send(200, review_summary())
             elif path == "/api/ai/review/progress":
@@ -2022,11 +2059,28 @@ class Handler(BaseHTTPRequestHandler):
                 # 一律回脱敏视图：密钥刚填进来，也不能原样吐回页面
                 self._send(200, {"ok": True, "config": ai_parse.public_config()})
             elif path == "/api/ai/test":
+                # 拿真实密钥发一次请求，会真的花钱。谁能看设置页谁才能点。
+                _c = connect()
+                try:
+                    _blocked = self._admin_only(_c, "测试接口连通")
+                finally:
+                    _c.close()
+                if _blocked:
+                    self._send(200, _blocked)
+                    return
                 import ai_parse
                 self._send(200, ai_parse.test_connection())
             elif path == "/api/ai/vision-probe":
                 # 手动"重新检测"：发一张写着 AB12 的小图，看模型能不能抄出来。
                 # 结果写缓存（键带模型名）；None=网络失败，如实告知不写缓存。
+                _c = connect()
+                try:
+                    _blocked = self._admin_only(_c, "重新检测视觉能力")
+                finally:
+                    _c.close()
+                if _blocked:
+                    self._send(200, _blocked)
+                    return
                 import ai_parse
                 try:
                     verdict = ai_parse.probe_vision()

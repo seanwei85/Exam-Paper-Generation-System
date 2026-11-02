@@ -117,6 +117,20 @@ def ready(cfg=None):
     return bool((cfg.get("api_key") or "").strip() and (cfg.get("base_url") or "").strip())
 
 
+#: 普通用户能知道的字段。导入页只说"能不能用、哪个模型"，其余都是管理员的事。
+BRIEF_KEYS = ("enabled", "model", "vision_model", "ready")
+
+
+def brief_config(cfg=None):
+    """给普通用户的极简视图：没有接口地址、没有密钥尾号、没有超时与分块参数。
+
+    界面靠 ready/model 决定"导入时走不走 AI"的提示文案，这四个字段足够；
+    多给的每一条都是泄露面。
+    """
+    full = cfg if cfg is not None and "ready" in (cfg or {}) else public_config(cfg)
+    return {k: full.get(k) for k in BRIEF_KEYS}
+
+
 # ---------------------------------------------------------------- 调用
 
 def _post(url, body, key, timeout):
