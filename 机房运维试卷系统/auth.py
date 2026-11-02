@@ -186,6 +186,23 @@ def get_user_cats(conn, uid):
     return [r[0] for r in rows]
 
 
+def setting_minutes(conn):
+    """会话有效期与"谁算在线"必须同源。
+
+    原先 online_regular_exists 写死 DEFAULT_SESSION_MINUTES，而会话本身
+    按设置页那一项过期：用户把"自动退出"改成 60 分钟后，30~60 分钟之间
+    管理员会以为没人在线而恢复可写，可对方其实还能操作，两边就错位了。
+    """
+    try:
+        row = conn.execute(
+            "SELECT value FROM setting WHERE key='session_minutes'").fetchone()
+        if row and str(row[0]).strip():
+            return max(1, int(row[0]))
+    except Exception:
+        pass
+    return DEFAULT_SESSION_MINUTES
+
+
 def create_session(conn, uid, minutes=None):
     now = time.time()
     token = secrets.token_urlsafe(32)
@@ -214,7 +231,7 @@ def session_user(conn, token, minutes=None):
     s = get_session(conn, token)
     if not s:
         return None
-    minutes = DEFAULT_SESSION_MINUTES if minutes is None else minutes
+    minutes = setting_minutes(conn) if minutes is None else minutes
     if time.time() - float(s.get("last_seen") or 0) > minutes * 60:
         # 过期即释放写锁：会话没了却还占着分类，别人会一直看到"正被某人编辑"，
         # 而那个人其实早就掉线了，只能等 10 分钟空闲超时才能接手。
@@ -256,7 +273,7 @@ def set_password(conn, uid, password):
 
 
 def purge_sessions(conn, minutes=None):
-    minutes = DEFAULT_SESSION_MINUTES if minutes is None else minutes
+    minutes = setting_minutes(conn) if minutes is None else minutes
     cutoff = time.time() - minutes * 60
     conn.execute("DELETE FROM session WHERE last_seen < ?", (cutoff,))
     conn.commit()
@@ -290,7 +307,7 @@ def can_write_category(conn, user, cat_id, token=None):
 
 
 def online_regular_exists(conn, exclude_uid=None):
-    minutes = DEFAULT_SESSION_MINUTES
+    minutes = setting_minutes(conn)
     cutoff = time.time() - minutes * 60
     rows = conn.execute(
         "SELECT s.uid, u.is_admin FROM session s JOIN user u ON u.id=s.uid"

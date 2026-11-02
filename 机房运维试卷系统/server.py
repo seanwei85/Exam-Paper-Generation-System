@@ -35,7 +35,7 @@ LOG_PATH = os.path.join(DATA_DIR, "app.log")
 DEFAULT_PORT = 8765
 PORT_RANGE = 20
 
-APP_VERSION = "V1.15"
+APP_VERSION = "V1.16"
 
 COOKIE_NAME = "molab_session"
 

@@ -1,6 +1,7 @@
 """P35: 多用户 / 岗位授权 / 分类级互斥（FR-MU-01~13）。"""
 import os
 import sys
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -92,6 +93,44 @@ class P35Account(BaseCase):
         ok, why = self.auth.check_write(conn, u_adm, t_adm, [1])
         self.assertFalse(ok)
         self.assertIn("只读", why)
+
+    def test_admin_readonly_follows_session_minutes_setting(self):
+        """管理员什么时候解锁，要跟设置页那一项同源，不能写死 30 分钟。
+
+        原先 online_regular_exists 用常量 30，而会话本身按设置过期。
+        用户把"自动退出"改成 5 分钟后，普通用户 8 分钟没动就该算离线、
+        管理员恢复可写；若仍按 30 分钟算，就会一直卡在只读，
+        同事明明已经走了，管理员却改不了题。
+        """
+        conn = self.conn
+        adm = self.auth.create_user(conn, "boss2", "p", 1, [])
+        reg = self.auth.create_user(conn, "worker2", "p", 0, [1])
+        t_adm = self.auth.create_session(conn, adm, 5)
+        t_reg = self.auth.create_session(conn, reg, 5)
+        # 普通用户最后活动时间拨到 8 分钟前
+        conn.execute("UPDATE session SET last_seen=? WHERE token=?",
+                     (time.time() - 8 * 60, t_reg))
+        conn.execute("INSERT OR REPLACE INTO setting(key,value)"
+                     " VALUES('session_minutes','5')")
+        conn.commit()
+        try:
+            self.assertFalse(self.auth.online_regular_exists(conn),
+                             "设成 5 分钟后，8 分钟没动的人不该再算在线")
+            u_adm = self.auth.get_user(conn, adm)
+            ok, why = self.auth.check_write(conn, u_adm, t_adm, [1])
+            self.assertTrue(ok, why)
+
+            # 同一个 8 分钟，把设置改回 30 分钟就该重新算"在线"
+            conn.execute("UPDATE setting SET value='30' WHERE key='session_minutes'")
+            conn.commit()
+            self.assertTrue(self.auth.online_regular_exists(conn))
+            ok2, why2 = self.auth.check_write(conn, u_adm, t_adm, [1])
+            self.assertFalse(ok2)
+            self.assertIn("只读", why2)
+        finally:
+            conn.execute("INSERT OR REPLACE INTO setting(key,value)"
+                         " VALUES('session_minutes','30')")
+            conn.commit()
 
     def test_write_denied_outside_grant(self):
         """只授权电气，改暖通要在鉴权层就被拒（FR-MU-05）。"""
