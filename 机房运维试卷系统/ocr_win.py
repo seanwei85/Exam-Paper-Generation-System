@@ -13,9 +13,14 @@
 import os
 import re
 import subprocess
+import sys
 import tempfile
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    # 打包后 ocr_png.ps1 外置在 exe 旁边，不进解包目录；跟 DATA_DIR 同源。
+    _HERE = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
 # 环境变量可换脚本（测试注入假 OCR 用）；不设就用随程序发布的这份
 PS_SCRIPT = os.environ.get("ZJLAB_OCR_PS1") or os.path.join(_HERE, "ocr_png.ps1")
 TIMEOUT = 60          # 单页 OCR 上限（秒）；正常几百毫秒到两三秒

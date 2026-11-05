@@ -22,7 +22,12 @@ from datetime import datetime, date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    # PyInstaller 冻结后 __file__ 落在临时解包目录（每次启动换一个），
+    # 拿它当数据根目录等于"重启一次丢一次题库"。数据与外置资源一律跟着 exe 走。
+    BASE = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    BASE = os.path.dirname(os.path.abspath(__file__))
 import auth  # noqa: E402  P35 多用户与岗位授权
 import auth_http  # noqa: E402  P35 鉴权的 HTTP 层编排
 import dupe  # noqa: E402  与本文件同目录，纯标准库
@@ -35,7 +40,7 @@ LOG_PATH = os.path.join(DATA_DIR, "app.log")
 DEFAULT_PORT = 8765
 PORT_RANGE = 20
 
-APP_VERSION = "V1.17"
+APP_VERSION = "V1.18"
 
 COOKIE_NAME = "molab_session"
 
@@ -2118,6 +2123,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, undo_reviews(payload.get("ids") or []))
             elif path == "/api/backup":
                 self._send(200, {"ok": True, "file": make_backup()})
+            elif path == "/api/shutdown":
+                # 退出服务影响所有在线的同事，只认管理员身份；单机模式无账号体系则允许。
+                conn = connect()
+                try:
+                    blocked = self._admin_identity_only(conn, "退出软件")
+                finally:
+                    conn.close()
+                if blocked:
+                    self._send(200, blocked)
+                else:
+                    self._send(200, request_shutdown())
             else:
                 self._send(404, {"ok": False, "error": "not found"})
         except Exception as exc:
@@ -2146,7 +2162,35 @@ def port_busy(port):
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
+_HTTPD = None
+
+
+def request_shutdown():
+    """界面「退出软件」：先把响应发回浏览器，再停服务。
+
+    --windowed 版没有控制台窗口可关，这是唯一的正常退出路径。
+    在当前请求线程里直接 shutdown 会让浏览器只看到"连接被重置"，
+    所以另起线程延迟 0.6 秒，等响应写完再停 serve_forever。
+    """
+    def _stop():
+        time.sleep(0.6)
+        logging.info("收到退出软件请求，服务关闭")
+        h = _HTTPD
+        if h is not None:
+            try:
+                h.shutdown()
+            except Exception:
+                logging.exception("shutdown")
+        time.sleep(0.3)
+        # 兜底：webbrowser 的 Timer 等非守护线程可能还挂着，确保进程真的结束
+        os._exit(0)
+
+    threading.Thread(target=_stop, daemon=True).start()
+    return {"ok": True, "message": "服务正在关闭，可以关闭浏览器窗口"}
+
+
 def main():
+    global _HTTPD
     forced_port = CLI_PORT
 
     setup_logging()
@@ -2168,6 +2212,7 @@ def main():
     host = "0.0.0.0" if lan else "127.0.0.1"
     url = f"http://127.0.0.1:{port}/"
     httpd = ThreadingHTTPServer((host, port), Handler)
+    _HTTPD = httpd
     logging.info("服务启动 %s 绑定 %s 版本 %s 代码快照 %s", url, host, APP_VERSION,
                  time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(_BOOT_MTIME)))
     if "--no-browser" not in sys.argv:

@@ -53,6 +53,13 @@ a{color:var(--primary);text-decoration:none}
 .nav .dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.45}
 .side-foot{padding:10px 14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--text-3);line-height:1.7}
 .side-foot code{display:block;font-size:10.5px;background:#f3f5f8;padding:2px 5px;border-radius:3px;color:var(--text-2);word-break:break-all;overflow-wrap:anywhere;line-height:1.5;max-height:44px;overflow:hidden}
+.quit-btn{display:block;width:100%;margin-top:9px;padding:6px 8px;font-size:12px;color:var(--text-2);background:#fff;border:1px solid var(--line-2);border-radius:7px;cursor:pointer}
+.quit-btn:hover{color:#b42318;border-color:#f0b4ae;background:#fff6f5}
+.quit-btn[hidden]{display:none}
+.quit-done{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:999}
+.quit-done .qd-box{max-width:420px;padding:28px 32px;background:var(--panel);border:1px solid var(--line);border-radius:12px;text-align:center;line-height:1.8}
+.quit-done b{display:block;font-size:18px;color:var(--text);margin-bottom:10px}
+.quit-done p{margin:4px 0;font-size:13px;color:var(--text-2)}
 
 .main{flex:1;min-width:0;padding:22px 28px 40px}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px}
@@ -351,6 +358,7 @@ body.has-ro{padding-top:44px}
     <div class="who-box" id="whoBox" hidden></div>
     <div class="side-foot">
       数据文件<br><code id="dataPath">data/library.db</code>
+      <button class="quit-btn" id="quitBtn" onclick="doQuit()" hidden>退出软件</button>
     </div>
   </aside>
   <main class="main" id="main"></main>
@@ -2820,6 +2828,27 @@ async function doSetupAdmin(){
   route();
 }
 
+/** 打包版没有控制台窗口可关，「退出软件」是唯一的正常停机入口。
+ *  按身份显隐：单机模式没有账号体系，谁都能关；多人模式只给管理员，
+ *  否则一个普通用户就能把其他同事正在用的服务掐掉。 */
+function syncQuitBtn(){
+  const b = document.getElementById('quitBtn');
+  if(!b) return;
+  b.hidden = !isAdmin();
+}
+
+async function doQuit(){
+  if(!confirm('确定退出软件吗？\n\n服务关闭后，其他同事将无法访问；下次双击软件图标即可重新启动。')) return;
+  let r = null;
+  try{ r = await API.post('/api/shutdown', {}); }catch(_){ r = null; }
+  if(r && r.ok === false){ toast(r.error || '退出失败'); return; }
+  // 服务已经停了，别把人留在一个点什么都报错的界面上
+  document.body.innerHTML = '<div class="quit-done">'
+    + '<div class="qd-box"><b>软件已关闭</b>'
+    + '<p>服务已停止，可以关闭这个浏览器窗口了。</p>'
+    + '<p>下次使用时，双击文件夹里的软件图标即可重新启动。</p></div></div>';
+}
+
 async function doLogout(){
   try{ await API.post('/api/logout', {}); }catch(_){}
   AUTH.user = null;
@@ -2835,6 +2864,7 @@ async function doLogout(){
  *  必须常驻：只读条只在特定状态下出现，靠它退出会让人找不到入口，
  *  也会让人分不清"现在到底是谁在操作"。 */
 function renderWhoBox(){
+  syncQuitBtn();
   const box = document.getElementById('whoBox');
   if(!box) return;
   if(!AUTH.on || !AUTH.user){ box.hidden = true; box.innerHTML = ''; return; }
