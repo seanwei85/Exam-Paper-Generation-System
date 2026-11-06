@@ -185,6 +185,29 @@ class P40PackageStatic(unittest.TestCase):
         self.assertIn("/api/shutdown", self.ui)
         self.assertIn("confirm(", self.ui)
 
+    def test_exe_icon_uses_dib_frames(self):
+        """PNG 帧 ico 在部分 Explorer 图标缓存下会退化成默认图标。
+
+        exe 的 RT_ICON 必须写标准 DIB(BMP) 帧；BITMAPINFOHEADER 的 biSize
+        恒为 40，而 PNG 帧开头是 0x474e5089，可据此逐帧判定。
+        """
+        import struct
+        self.assertIn("logo_exe.ico", read_root("tools/build_exe.py"),
+                      "打包必须用 DIB 帧 ico，不能用 PNG 帧的 logo.ico")
+        maker = read_app("tools/make_icons.py")
+        self.assertIn("def build_ico_dib", maker)
+        self.assertIn("def dib_frame", maker)
+        ico = os.path.join(APP, "assets", "logo_exe.ico")
+        self.assertTrue(os.path.isfile(ico), "缺少 assets/logo_exe.ico")
+        with open(ico, "rb") as f:
+            data = f.read()
+        cnt = struct.unpack_from("<H", data, 4)[0]
+        self.assertEqual(cnt, 7, "应含 16/24/32/48/64/128/256 七帧")
+        for i in range(cnt):
+            off = struct.unpack_from("<I", data, 6 + 16 * i + 12)[0]
+            self.assertEqual(struct.unpack_from("<I", data, off)[0], 40,
+                             "第 %d 帧不是 DIB" % (i + 1))
+
 
 class P40ShutdownHttp(AuthResetMixin, HttpCase):
     """接口：普通用户点不动；真退出用独立进程验证，不碰类共享服务。"""
